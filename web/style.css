@@ -1,0 +1,31 @@
+body {
+  margin: 0px;
+  font-family: sans-serif,cantarell,helvetica;
+}
+
+.toolbar {
+  padding: 12px;
+  padding-left: 20px;
+  color: #fff;
+  font-size: 35px;
+  background-color: #282828;
+}
+
+.toolbar .refresh {
+  display: inline-block;
+  float: right;
+  padding-right: 20px;
+}
+
+table {
+  padding: 0em 0.3em;
+  padding-top: 0.3em;
+  
+}
+
+table tbody tr td a {
+  text-decoration: none;
+  color: #000;
+  font-weight: bold;
+  font-size: 17px;
+}

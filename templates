@@ -1,0 +1,39 @@
+#!index
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Journal Share - {nick}</title>
+    <link href="style.css" rel="stylesheet" type="text/css"></link>
+  </head>
+  <body>
+    <div class="toolbar">
+      <img src="images/journal-share-icon.png"></img>{nick}'s Journal
+      <div class="refresh" onclick="document.location.reload(true)">
+        <img src="images/refresh.png" width="40" height="40"></img>
+      </div>
+    </div>
+    {objects}
+  </body>
+</html>
+!#
+
+#!object
+    <table>
+      <tbody>
+        <tr>
+          <td>
+            <a href="files/{file}">
+              <img src="images/{icon}" height="40" width="40" style="margin-right: 5px;">
+            </a>
+          </td>
+          <td>
+            <a href="files/{file}">
+              {name}
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <hr>
+!#
