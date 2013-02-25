@@ -1,3 +1,4 @@
+
 # Copyright 2013 Agustin Zubiaga <aguz@sugarlabs.org>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -14,35 +15,68 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
+import os
+
+from sugar import profile
 from sugar.datastore import datastore
 
 tfile = open('templates', 'r')
 templates = tfile.read()
 tfile.close()
 
+webdir = os.path.join(os.path.dirname(__file__), 'web')
+
+INDEX = open(os.path.join(webdir, 'index.html'), 'w')
+ICONS_DIR = os.path.join(webdir, 'images')
+FILES_DIR = os.path.join(webdir, 'files')
+
 
 def fill_out_template(template, content):
     template = templates.split('#!%s\n' % template)[1].split('\n!#')[0]
-    for x in content.keys():
+    for x in list(content.keys()):
         template = template.replace('{%s}' % x, content[x])
 
     return template
 
 
-def build_journal():
-    objects_starred, no = datastore.find({'keep': '1'})
+def find_icon(mime_type):
+    generic_name = mime_type.split('/')[0]
+    if generic_name + '.svg' in os.listdir(ICONS_DIR):
+        return '%s.svg' % generic_name
 
-    objects = [{'file': 'a', 'name': 'No Te Va Gustar - A las nueve',
-                'icon': 'audio-x-generic.svg'},
-               {'file': 'b', 'name': 'Perla jugando con el gato BOB',
-                'icon': 'image.svg'}]
+    else:
+        return 'unknown.svg'
+
+
+def link_file(file_path):
+    link_path = os.path.join(FILES_DIR, os.path.split(file_path)[-1])
+    os.link(file_path, link_path)
+    return os.path.split(link_path)[-1]
+
+
+def build_journal_page():
+    for f in os.listdir(FILES_DIR):
+        os.remove(os.path.join(FILES_DIR, f))
+
+    objects_starred, no = datastore.find({'keep': '1'})
+    objects = []
+
+    for dsobj in objects_starred:
+        title = dsobj.metadata['title']
+        icon = find_icon(dsobj.metadata['mime_type'])
+        file_link = link_file(dsobj.file_path)
+        objects.append({'file': file_link, 'name': title, 'icon': icon})
 
     objects_html = ''
     for o in objects:
         objects_html += '%s' % fill_out_template('object', o)
 
-    print fill_out_template('index', {'nick': 'Agus', 'objects': objects_html})
+    index_html = fill_out_template('index', {'nick': profile.get_nick_name(),
+                                             'objects': objects_html})
+
+    INDEX.write(index_html)
+    INDEX.flush()
 
 
 if __name__ == "__main__":
-    build_journal()
+    build_journal_page()

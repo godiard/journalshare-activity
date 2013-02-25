@@ -18,15 +18,15 @@ import SimpleHTTPServer
 import SocketServer
 import os
 
-os.chdir('web')
+os.chdir(os.path.join(os.path.dirname(__file__), 'web'))
 
 
 def setup_server():
-    PORT = 1097
+    PORT = 2810
     Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
-    httpd = SocketServer.TCPServer(("", PORT), Handler)
+    httpd = SocketServer.TCPServer(('', PORT), Handler)
 
-    print "serving at port", PORT
+    print 'serving at port', PORT
 
     return httpd
 

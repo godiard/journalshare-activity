@@ -5,14 +5,28 @@
     <meta charset="utf-8">
     <title>Journal Share - {nick}</title>
     <link href="style.css" rel="stylesheet" type="text/css"></link>
+    <link rel="icon" type="image/svg" href="images/journalshare-icon.svg"></link>
   </head>
   <body>
-    <div class="toolbar">
-      <img src="images/journal-share-icon.png"></img>{nick}'s Journal
-      <div class="refresh" onclick="document.location.reload(true)">
-        <img src="images/refresh.png" width="40" height="40"></img>
-      </div>
-    </div>
+    <table id="toolbar">
+      <tbody>
+        <tr>
+          <td>
+            <a href="index.html">
+              <img src="images/journalshare-icon.svg"></img>
+            </a>
+          </td>
+          <td>
+            {nick}'s Journal
+          </td>
+          <td>
+            <div class="refresh" onclick="document.location.reload(true)">
+              <img src="images/refresh.png" width="40" height="40"></img>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
     {objects}
   </body>
 </html>
