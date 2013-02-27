@@ -41,11 +41,11 @@ def fill_out_template(template, content):
 
 def find_icon(mime_type):
     generic_name = mime_type.split('/')[0]
-    if generic_name + '.svg' in os.listdir(ICONS_DIR):
-        return '%s.svg' % generic_name
+    if generic_name + '.png' in os.listdir(ICONS_DIR):
+        return '%s.png' % generic_name
 
     else:
-        return 'unknown.svg'
+        return 'unknown.png'
 
 
 def link_file(file_path):
