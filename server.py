@@ -14,25 +14,94 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-import SimpleHTTPServer
-import SocketServer
 import os
+import sys
+import logging
 
-os.chdir(os.path.join(os.path.dirname(__file__), 'web'))
+from gi.repository import Gio
+from sugar3 import network
 
 
-def setup_server():
-    PORT = 2810
-    Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
-    httpd = SocketServer.TCPServer(('', PORT), Handler)
+class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
+    """HTTP Request Handler to send data to the webview.
 
-    print 'serving at port', PORT
+    RequestHandler class that integrates with Glib mainloop. It writes
+    the specified file to the client in chunks, returning control to the
+    mainloop between chunks.
 
-    return httpd
+    """
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+
+    def do_GET(self):
+        """Respond to a GET request."""
+        #logging.error('inside do_get dir(self) %s', dir(self))
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        # If someone went to "http://something.somewhere.net/foo/bar/",
+        # then s.path equals "/foo/bar/".
+        # verify if the requested path is in the web_path directory
+
+        file_used = False
+        if self.path:
+            file_path = self.server.web_path + self.path
+            logging.error('Requested file %s', file_path)
+
+            if os.path.isfile(file_path):
+                logging.error('Opening requested file %s', file_path)
+                f = Gio.File.new_for_path(file_path)
+                _error, content, _time = f.load_contents(None)
+
+                logging.error('Closing requested file %s', file_path)
+                self.wfile.write(content)
+                file_used = True
+
+        if not file_used:
+            self.wfile.write("<html><head><title>Title ...</title></head>")
+            self.wfile.write("<body><p>This is a test.</p>")
+            self.wfile.write("<p>You accessed path: %s</p>" % self.path)
+            self.wfile.write("</body></html>")
+
+
+class JournalHTTPServer(network.GlibTCPServer):
+    """HTTP Server for transferring document while collaborating."""
+
+    def __init__(self, server_address, activity_path):
+        """Set up the GlibTCPServer with the JournalHTTPRequestHandler.
+        """
+        self.activity_path = activity_path
+        self.web_path = self.activity_path + '/web'
+        network.GlibTCPServer.__init__(self, server_address,
+                                       JournalHTTPRequestHandler)
+
+
+class JournalManager():
+
+    def __init__(self):
+        pass
+
+    def get_json(self, query):
+        """
+        Receive a dictionary with the query parameters and creates
+        a json with the results
+        """
+        pass
+
+
+def setup_server(activity_path):
+    # TODO: set the port in a more inteligent way
+    port = 2500
+    server = JournalHTTPServer(("", port), activity_path)
+    return server
 
 if __name__ == "__main__":
-    server = setup_server()
+    activity_path = sys.argv[1]
+    server = setup_server(activity_path)
     try:
+        logging.debug("Before start server")
         server.serve_forever()
     except KeyboardInterrupt:
         print "Shutting down server"

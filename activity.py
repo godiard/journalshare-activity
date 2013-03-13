@@ -14,10 +14,8 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-import logging
-from threading import Thread
+import subprocess
 
-from gi.repository import GObject
 from gi.repository import Gtk
 from gi.repository import WebKit
 
@@ -25,45 +23,6 @@ from sugar3.activity import activity
 from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbarbox import ToolbarBox
-from sugar3 import network
-
-
-class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
-    """HTTP Request Handler to send data to the webview.
-
-    RequestHandler class that integrates with Glib mainloop. It writes
-    the specified file to the client in chunks, returning control to the
-    mainloop between chunks.
-
-    """
-    def do_HEAD(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-
-    def do_GET(self):
-        """Respond to a GET request."""
-        logging.error('inside do_get dir(self) %s', dir(self))
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write("<html><head><title>Title goes here.</title></head>")
-        self.wfile.write("<body><p>This is a test.</p>")
-        # If someone went to "http://something.somewhere.net/foo/bar/",
-        # then s.path equals "/foo/bar/".
-
-        #self.wfile.write("<p>You accessed path: %s</p>" % self.path)
-        self.wfile.write("</body></html>")
-
-
-class JournalHTTPServer(network.GlibTCPServer):
-    """HTTP Server for transferring document while collaborating."""
-
-    def __init__(self, server_address):
-        """Set up the GlibTCPServer with the JournalHTTPRequestHandler.
-        """
-        network.GlibTCPServer.__init__(self, server_address,
-                                       JournalHTTPRequestHandler)
 
 
 class JournalShare(activity.Activity):
@@ -71,6 +30,10 @@ class JournalShare(activity.Activity):
     def __init__(self, handle):
 
         activity.Activity.__init__(self, handle)
+
+        activity_path = activity.get_bundle_path()
+        self.server_proc = subprocess.Popen(['/bin/python', 'server.py',
+            activity_path])
 
         toolbar_box = ToolbarBox()
 
@@ -91,21 +54,10 @@ class JournalShare(activity.Activity):
         self.set_toolbar_box(toolbar_box)
         toolbar_box.show()
 
-        activity_path = activity.get_bundle_path()
         self.view = WebKit.WebView()
-        #self.view.load_uri('file://%s/web/index.html' % activity_path)
-        self.view.load_uri('http://localhost:2500')
+        self.view.load_uri('http://localhost:2500/index.html')
         self.view.show()
         self.set_canvas(self.view)
-
-        # TODO: set the port in a more inteligent way
-        self.port = 2500
-        self._server = JournalHTTPServer(("", self.port))
-        server = Thread(target=self._server.serve_forever)
-        server.setDaemon(True)
-        logging.debug("Before start server")
-        server.start()
-        logging.debug("After start server")
 
     def read_file(self, file_path):
         pass
@@ -114,5 +66,5 @@ class JournalShare(activity.Activity):
         pass
 
     def can_close(self):
-        self._server.shutdown()
+        self.server_proc.kill()
         return True
