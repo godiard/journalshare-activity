@@ -16,6 +16,8 @@
 
 import subprocess
 
+from gi.repository import GObject
+GObject.threads_init()
 from gi.repository import Gtk
 from gi.repository import WebKit
 
@@ -24,6 +26,7 @@ from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbarbox import ToolbarBox
 
+import downloadmanager
 
 class JournalShare(activity.Activity):
 
@@ -55,9 +58,25 @@ class JournalShare(activity.Activity):
         toolbar_box.show()
 
         self.view = WebKit.WebView()
+        self.view.connect('mime-type-policy-decision-requested',
+                     self.__mime_type_policy_cb)
+        self.view.connect('download-requested', self.__download_requested_cb)
+
         self.view.load_uri('http://localhost:2500/web/index.html')
         self.view.show()
         self.set_canvas(self.view)
+
+    def __mime_type_policy_cb(self, webview, frame, request, mimetype,
+                              policy_decision):
+        if not self.view.can_show_mime_type(mimetype):
+            policy_decision.download()
+            return True
+
+        return False
+
+    def __download_requested_cb(self, browser, download):
+        downloadmanager.add_download(download, browser)
+        return True
 
     def read_file(self, file_path):
         pass

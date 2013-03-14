@@ -68,13 +68,16 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                     logging.error('Returned datastore/starred')
                 if self.path.startswith('/datastore/id='):
                     object_id = self.path[self.path.find('=') + 1:]
-                    mime_type, content = jm.get_object_by_id(object_id)
-                    self.send_header_response(mime_type)
+                    mime_type, title, content = jm.get_object_by_id(object_id)
+                    self.send_header_response(mime_type, title)
                     self.wfile.write(content)
 
-    def send_header_response(self, mime_type):
+    def send_header_response(self, mime_type, file_name=None):
         self.send_response(200)
         self.send_header("Content-type", mime_type)
+        if file_name is not None:
+            self.send_header("Content-Disposition",
+                    "inline; filename='%s'" % file_name)
         self.end_headers()
 
 
@@ -102,12 +105,15 @@ class JournalManager():
         if mime_type == '':
             # TODO: what type should we use if not available?
             mime_type = 'application/x-binary'
+        title = None
+        if 'title' in dsobj.metadata:
+            title = dsobj.metadata['title']
 
         f = open(dsobj.file_path, 'r')
         # TODO: read all the file in memory?
         content = f.read()
         f.close()
-        return mime_type, content
+        return mime_type, title, content
 
     def get_starred(self):
         self.dsobjects, self._nobjects = datastore.find({'keep': '1'})
