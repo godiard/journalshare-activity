@@ -11,18 +11,12 @@ body {
   width: 100%;
 }
 
-#title {
+.title {
   font-family: sans-serif,cantarell,helvetica;
   color: #fff;
   font-size: 35px;
   background-color: #666666;
   width: 100%;
-}
-
-.refresh {
-  display: inline-block;
-  float: right;
-  padding-right: 20px;
 }
 
 table {

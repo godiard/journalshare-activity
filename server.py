@@ -17,9 +17,11 @@
 import os
 import sys
 import logging
+import json
 
 from gi.repository import Gio
 from sugar3 import network
+from sugar3.datastore import datastore
 
 
 class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
@@ -38,32 +40,42 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
     def do_GET(self):
         """Respond to a GET request."""
         #logging.error('inside do_get dir(self) %s', dir(self))
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        # If someone went to "http://something.somewhere.net/foo/bar/",
-        # then s.path equals "/foo/bar/".
-        # verify if the requested path is in the web_path directory
 
         file_used = False
         if self.path:
-            file_path = self.server.web_path + self.path
-            logging.error('Requested file %s', file_path)
+            if self.path.startswith('/web'):
+                # TODO: check mime_type
+                self.send_header_response("text/html")
+                # return files requested in the web directory
+                file_path = self.server.activity_path + self.path
+                logging.error('Requested file %s', file_path)
 
-            if os.path.isfile(file_path):
-                logging.error('Opening requested file %s', file_path)
-                f = Gio.File.new_for_path(file_path)
-                _error, content, _time = f.load_contents(None)
+                if os.path.isfile(file_path):
+                    logging.error('Opening requested file %s', file_path)
+                    f = Gio.File.new_for_path(file_path)
+                    _error, content, _time = f.load_contents(None)
 
-                logging.error('Closing requested file %s', file_path)
-                self.wfile.write(content)
-                file_used = True
+                    logging.error('Closing requested file %s', file_path)
+                    self.wfile.write(content)
+                    file_used = True
 
-        if not file_used:
-            self.wfile.write("<html><head><title>Title ...</title></head>")
-            self.wfile.write("<body><p>This is a test.</p>")
-            self.wfile.write("<p>You accessed path: %s</p>" % self.path)
-            self.wfile.write("</body></html>")
+            if self.path.startswith('/datastore'):
+                # queries to the datastore
+                jm = JournalManager()
+                if self.path == '/datastore/starred':
+                    self.send_header_response("text/html")
+                    self.wfile.write(jm.get_starred())
+                    logging.error('Returned datastore/starred')
+                if self.path.startswith('/datastore/id='):
+                    object_id = self.path[self.path.find('=') + 1:]
+                    mime_type, content = jm.get_object_by_id(object_id)
+                    self.send_header_response(mime_type)
+                    self.wfile.write(content)
+
+    def send_header_response(self, mime_type):
+        self.send_response(200)
+        self.send_header("Content-type", mime_type)
+        self.end_headers()
 
 
 class JournalHTTPServer(network.GlibTCPServer):
@@ -73,7 +85,6 @@ class JournalHTTPServer(network.GlibTCPServer):
         """Set up the GlibTCPServer with the JournalHTTPRequestHandler.
         """
         self.activity_path = activity_path
-        self.web_path = self.activity_path + '/web'
         network.GlibTCPServer.__init__(self, server_address,
                                        JournalHTTPRequestHandler)
 
@@ -82,6 +93,58 @@ class JournalManager():
 
     def __init__(self):
         pass
+
+    def get_object_by_id(self, object_id):
+        dsobj = datastore.get(object_id)
+        mime_type = ''
+        if 'mime_type' in dsobj.metadata:
+            mime_type = dsobj.metadata['mime_type']
+        if mime_type == '':
+            # TODO: what type should we use if not available?
+            mime_type = 'application/x-binary'
+
+        f = open(dsobj.file_path, 'r')
+        # TODO: read all the file in memory?
+        content = f.read()
+        f.close()
+        return mime_type, content
+
+    def get_starred(self):
+        self.dsobjects, self._nobjects = datastore.find({'keep': '1'})
+        results = []
+        for dsobj in self.dsobjects:
+            logging.error(dir(dsobj))
+            title = ''
+            desc = ''
+            comment = []
+            preview = None
+            object_id = dsobj.object_id
+            if hasattr(dsobj, 'metadata'):
+                if 'title' in dsobj.metadata:
+                    title = dsobj.metadata['title']
+                if 'description' in dsobj.metadata:
+                    desc = dsobj.metadata['description']
+                if 'comments' in dsobj.metadata:
+                    try:
+                        comment = json.loads(dsobj.metadata['comments'])
+                        _logger.debug(comment)
+                    except:
+                        comment = []
+                """
+                if 'mime_type' in dsobj.metadata and \
+                   dsobj.metadata['mime_type'][0:5] == 'image':
+                    preview = get_pixbuf_from_file(
+                        dsobj.file_path,
+                        int(PREVIEW[self._orientation][2] * self._scale),
+                        int(PREVIEW[self._orientation][3] * self._scale))
+                elif 'preview' in dsobj.metadata:
+                    preview = get_pixbuf_from_journal(dsobj, 300, 225)
+                """
+            else:
+                logging.debug('dsobj has no metadata')
+            results.append({'title': title, 'desc': desc, 'comment': comment,
+                    'id': object_id})
+        return json.dumps(results)
 
     def get_json(self, query):
         """

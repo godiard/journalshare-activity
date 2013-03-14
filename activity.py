@@ -55,7 +55,7 @@ class JournalShare(activity.Activity):
         toolbar_box.show()
 
         self.view = WebKit.WebView()
-        self.view.load_uri('http://localhost:2500/index.html')
+        self.view.load_uri('http://localhost:2500/web/index.html')
         self.view.show()
         self.set_canvas(self.view)
 

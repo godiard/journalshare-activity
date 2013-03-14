@@ -3,56 +3,24 @@
   <head>
     <meta charset="utf-8">
     <title>Journal Share - Agustin Zubiaga</title>
-    <link href="style.css" rel="stylesheet" type="text/css"></link>
-    <link rel="icon" type="image/png" href="images/journalshare-icon.png"></link>
+    <link href="style.css" rel="stylesheet" type="text/css"/>
+    <script src="jquery-1.9.1.min.js" type="text/javascript"></script>
+    <script type="text/javascript">
+        $.getJSON("/datastore/starred", function(starred) {
+            for (var i = 0; i < starred.length; i++)
+            {
+                $('#journaltable').append("<tr>" +
+                    "<td class='title'>" + starred[i].title + "</td>"+
+                    "<td>" + starred[i].desc + "</td>"+
+                    "<td><a href=/datastore/id=" + starred[i].id + ">Download</a></td>"+
+                "</tr>");
+            }
+        });
+    </script>
   </head>
   <body>
-    <table id="title">
-      <tbody>
-        <tr>
-          <td>
-            <a href="index.html">
-              <img src="images/journalshare-icon.png"></img>
-            </a>
-          </td>
-          <td>
-            Agustin Zubiaga's Journal
-          </td>
-        </tr>
-      </tbody>
-    </table>
-        <table>
-      <tbody>
-        <tr>
-          <td>
-            <a href="files/ff6fbb53-0568-46d1-84b1-c2c85a9b6753_WgCiZT.png">
-              <img src="images/image.png" height="40" width="40" style="margin-right: 5px;">
-            </a>
-          </td>
-          <td>
-            <a href="files/ff6fbb53-0568-46d1-84b1-c2c85a9b6753_WgCiZT.png">
-              fondo.png
-            </a>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <hr>    <table>
-      <tbody>
-        <tr>
-          <td>
-            <a href="files/f9ba5ac1-3f2a-4e71-a43d-6ebee8f1dd83_us0sEb.wsgi">
-              <img src="images/unknown.png" height="40" width="40" style="margin-right: 5px;">
-            </a>
-          </td>
-          <td>
-            <a href="files/f9ba5ac1-3f2a-4e71-a43d-6ebee8f1dd83_us0sEb.wsgi">
-              Pippy Activity
-            </a>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <hr>
+      <table id="journaltable">
+
+      </table>
   </body>
 </html>
