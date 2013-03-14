@@ -71,6 +71,11 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                     mime_type, title, content = jm.get_object_by_id(object_id)
                     self.send_header_response(mime_type, title)
                     self.wfile.write(content)
+                if self.path.startswith('/datastore/preview/id='):
+                    object_id = self.path[self.path.find('=') + 1:]
+                    preview = jm.get_preview_by_id(object_id)
+                    self.send_header_response('image/png')
+                    self.wfile.write(preview)
 
     def send_header_response(self, mime_type, file_name=None):
         self.send_response(200)
@@ -114,6 +119,13 @@ class JournalManager():
         content = f.read()
         f.close()
         return mime_type, title, content
+
+    def get_preview_by_id(self, object_id):
+        dsobj = datastore.get(object_id)
+        preiew = None
+        if 'preview' in dsobj.metadata:
+            preview = dsobj.metadata['preview']
+        return preview
 
     def get_starred(self):
         self.dsobjects, self._nobjects = datastore.find({'keep': '1'})

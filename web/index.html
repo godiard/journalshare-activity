@@ -10,8 +10,11 @@
             for (var i = 0; i < starred.length; i++)
             {
                 $('#journaltable').append("<tr>" +
-                    "<td class='title'>" + starred[i].title + "</td>"+
-                    "<td>" + starred[i].desc + "</td>"+
+                    "<td><img src=/datastore/preview/id=" + starred[i].id + "/></td>"+
+                    "<td>"+
+                    "<table><tr><td class='title'>" + starred[i].title + "</td></tr>"+
+                    "<tr><td>" + starred[i].desc + "</td></tr></table>"+
+                    "</td>" +
                     "<td><a href=/datastore/id=" + starred[i].id + ">Download</a></td>"+
                 "</tr>");
             }
