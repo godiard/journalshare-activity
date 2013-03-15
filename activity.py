@@ -72,7 +72,10 @@ class JournalShare(activity.Activity):
 
         self.view.load_uri('http://localhost:2500/web/index.html')
         self.view.show()
-        self.set_canvas(self.view)
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.add(self.view)
+        scrolled.show()
+        self.set_canvas(scrolled)
 
         # collaboration
         self.unused_download_tubes = set()
