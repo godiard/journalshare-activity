@@ -122,7 +122,7 @@ class JournalManager():
 
     def get_preview_by_id(self, object_id):
         dsobj = datastore.get(object_id)
-        preiew = None
+        preview = None
         if 'preview' in dsobj.metadata:
             preview = dsobj.metadata['preview']
         return preview
@@ -172,15 +172,15 @@ class JournalManager():
         pass
 
 
-def setup_server(activity_path):
-    # TODO: set the port in a more inteligent way
-    port = 2500
+def setup_server(activity_path, port):
     server = JournalHTTPServer(("", port), activity_path)
     return server
 
+
 if __name__ == "__main__":
     activity_path = sys.argv[1]
-    server = setup_server(activity_path)
+    port = int(sys.argv[2])
+    server = setup_server(activity_path, port)
     try:
         logging.debug("Before start server")
         server.serve_forever()
