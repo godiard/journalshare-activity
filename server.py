@@ -135,7 +135,6 @@ class JournalManager():
             title = ''
             desc = ''
             comment = []
-            preview = None
             object_id = dsobj.object_id
             if hasattr(dsobj, 'metadata'):
                 if 'title' in dsobj.metadata:
@@ -145,31 +144,13 @@ class JournalManager():
                 if 'comments' in dsobj.metadata:
                     try:
                         comment = json.loads(dsobj.metadata['comments'])
-                        _logger.debug(comment)
                     except:
                         comment = []
-                """
-                if 'mime_type' in dsobj.metadata and \
-                   dsobj.metadata['mime_type'][0:5] == 'image':
-                    preview = get_pixbuf_from_file(
-                        dsobj.file_path,
-                        int(PREVIEW[self._orientation][2] * self._scale),
-                        int(PREVIEW[self._orientation][3] * self._scale))
-                elif 'preview' in dsobj.metadata:
-                    preview = get_pixbuf_from_journal(dsobj, 300, 225)
-                """
             else:
                 logging.debug('dsobj has no metadata')
             results.append({'title': title, 'desc': desc, 'comment': comment,
                     'id': object_id})
         return json.dumps(results)
-
-    def get_json(self, query):
-        """
-        Receive a dictionary with the query parameters and creates
-        a json with the results
-        """
-        pass
 
 
 def setup_server(activity_path, port):
