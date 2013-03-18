@@ -18,10 +18,109 @@ import os
 import sys
 import logging
 import json
+import cgi
+import magic
 
 from gi.repository import Gio
 from sugar3 import network
 from sugar3.datastore import datastore
+
+from warnings import filterwarnings, catch_warnings
+with catch_warnings():
+    if sys.py3kwarning:
+        filterwarnings("ignore", ".*mimetools has been removed",
+                       DeprecationWarning)
+    import mimetools
+
+# Maximum input we will accept when REQUEST_METHOD is POST
+# 0 ==> unlimited input
+maxlen = 0
+
+
+def parse_multipart(fp, pdict):
+    """Parse multipart input.
+    Copied from cgi.py , but modified to get the filename
+    Arguments:
+    fp   : input file
+    pdict: dictionary containing other parameters of content-type header
+    filenamedict: dictionary containing filenames if available
+    """
+    boundary = ""
+    if 'boundary' in pdict:
+        boundary = pdict['boundary']
+    if not cgi.valid_boundary(boundary):
+        raise ValueError('Invalid boundary in multipart form: %r' % boundary)
+
+    nextpart = "--" + boundary
+    lastpart = "--" + boundary + "--"
+    partdict = {}
+    filenamesdict = {}
+    terminator = ""
+
+    while terminator != lastpart:
+        bytes = -1
+        data = None
+        if terminator:
+            # At start of next part.  Read headers first.
+            headers = mimetools.Message(fp)
+            clength = headers.getheader('content-length')
+            if clength:
+                try:
+                    bytes = int(clength)
+                except ValueError:
+                    pass
+            if bytes > 0:
+                if maxlen and bytes > maxlen:
+                    raise ValueError('Maximum content length exceeded')
+                data = fp.read(bytes)
+            else:
+                data = ""
+        # Read lines until end of part.
+        lines = []
+        while 1:
+            line = fp.readline()
+            if not line:
+                terminator = lastpart  # End outer loop
+                break
+            if line[:2] == "--":
+                terminator = line.strip()
+                if terminator in (nextpart, lastpart):
+                    break
+            lines.append(line)
+        # Done with part.
+        if data is None:
+            continue
+        if bytes < 0:
+            if lines:
+                # Strip final line terminator
+                line = lines[-1]
+                if line[-2:] == "\r\n":
+                    line = line[:-2]
+                elif line[-1:] == "\n":
+                    line = line[:-1]
+                lines[-1] = line
+                data = "".join(lines)
+        line = headers['content-disposition']
+        if not line:
+            continue
+        else:
+            logging.error('CONTENT DISPOSITION %s', line)
+        key, params = cgi.parse_header(line)
+        if key != 'form-data':
+            continue
+        if 'name' in params:
+            name = params['name']
+        else:
+            continue
+        if 'filename' in params:
+            filenamesdict[name] = params['filename']
+
+        if name in partdict:
+            partdict[name].append(data)
+        else:
+            partdict[name] = [data]
+
+    return partdict, filenamesdict
 
 
 class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
@@ -36,6 +135,45 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
+
+    def do_POST(self):
+        if self.path == '/datastore/upload':
+            ctype = self.headers.get('content-type')
+            if not ctype:
+                return None
+            ctype, pdict = cgi.parse_header(ctype)
+            file_fields, filenames = parse_multipart(self.rfile, pdict)
+            file_content = file_fields['journal_item'][0]
+            logging.error('CONTENT %s', file_content)
+            file_name = filenames['journal_item']
+            logging.error('NAME %s', file_name)
+            # save to the journal
+            new_dsobject = datastore.create()
+            file_path = os.path.join(self.server.activity_root, 'instance',
+                    file_name)
+            f = open(file_path, 'w')
+            try:
+                f.write(file_content)
+            finally:
+                f.close()
+            #Set the file_path in the datastore.
+            new_dsobject.set_file_path(file_path)
+            new_dsobject.metadata['title'] = file_name
+            # get mime type
+            m = magic.open(magic.MAGIC_MIME)
+            m.load()
+            mime_type = m.file(file_path)
+            if mime_type.find(';') > 0:
+                # can be 'application/ogg; charset=binary'
+                mime_type = mime_type[:mime_type.find(';')]
+            new_dsobject.metadata['mime_type'] = mime_type
+            # mark as favorite
+            new_dsobject.metadata['keep'] = '1'
+            datastore.write(new_dsobject)
+            #redirect to index.html page
+            self.send_response(301)
+            self.send_header('Location', '/web/index.html')
+            self.end_headers()
 
     def do_GET(self):
         """Respond to a GET request."""
@@ -89,10 +227,11 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
 class JournalHTTPServer(network.GlibTCPServer):
     """HTTP Server for transferring document while collaborating."""
 
-    def __init__(self, server_address, activity_path):
+    def __init__(self, server_address, activity_path, activity_root):
         """Set up the GlibTCPServer with the JournalHTTPRequestHandler.
         """
         self.activity_path = activity_path
+        self.activity_root = activity_root
         network.GlibTCPServer.__init__(self, server_address,
                                        JournalHTTPRequestHandler)
 
@@ -153,15 +292,16 @@ class JournalManager():
         return json.dumps(results)
 
 
-def setup_server(activity_path, port):
-    server = JournalHTTPServer(("", port), activity_path)
+def setup_server(activity_path, activity_root, port):
+    server = JournalHTTPServer(("", port), activity_path, activity_root)
     return server
 
 
 if __name__ == "__main__":
     activity_path = sys.argv[1]
-    port = int(sys.argv[2])
-    server = setup_server(activity_path, port)
+    activity_root = sys.argv[2]
+    port = int(sys.argv[3])
+    server = setup_server(activity_path, activity_root, port)
     try:
         logging.debug("Before start server")
         server.serve_forever()

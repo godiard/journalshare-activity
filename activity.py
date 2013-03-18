@@ -31,8 +31,10 @@ from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbarbox import ToolbarBox
 
 import downloadmanager
+from filepicker import FilePicker
 
 JOURNAL_STREAM_SERVICE = 'journal-activity-http'
+
 
 class JournalShare(activity.Activity):
 
@@ -41,10 +43,11 @@ class JournalShare(activity.Activity):
         activity.Activity.__init__(self, handle)
 
         activity_path = activity.get_bundle_path()
+        activity_root = activity.get_activity_root()
         #TODO: check available port
         self.port = 2500
         self.server_proc = subprocess.Popen(['/bin/python', 'server.py',
-            activity_path, str(self.port)])
+            activity_path, activity_root, str(self.port)])
 
         toolbar_box = ToolbarBox()
 
@@ -69,6 +72,12 @@ class JournalShare(activity.Activity):
         self.view.connect('mime-type-policy-decision-requested',
                      self.__mime_type_policy_cb)
         self.view.connect('download-requested', self.__download_requested_cb)
+
+        try:
+            self.view.connect('run-file-chooser', self.__run_file_chooser)
+        except TypeError:
+            # Only present in WebKit1 > 1.9.3 and WebKit2
+            pass
 
         self.view.load_uri('http://localhost:2500/web/index.html')
         self.view.show()
@@ -187,6 +196,18 @@ class JournalShare(activity.Activity):
             return True
 
         return False
+
+    def __run_file_chooser(self, browser, request):
+        picker = FilePicker(self)
+        chosen = picker.run()
+        picker.destroy()
+
+        if chosen:
+            request.select_files([chosen])
+        elif hasattr(request, 'cancel'):
+            # WebKit2 only
+            request.cancel()
+        return True
 
     def __download_requested_cb(self, browser, download):
         downloadmanager.add_download(download, browser)
