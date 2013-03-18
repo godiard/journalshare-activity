@@ -24,6 +24,7 @@ from gi.repository import WebKit
 
 import telepathy
 import dbus
+import os.path
 
 from sugar3.activity import activity
 from sugar3.activity.widgets import ActivityToolbarButton
@@ -201,9 +202,12 @@ class JournalShare(activity.Activity):
         picker = FilePicker(self)
         chosen = picker.run()
         picker.destroy()
-
         if chosen:
-            request.select_files([chosen])
+            logging.error('CHOSEN %s', chosen)
+            tmp_dir = os.path.dirname(chosen)
+            preview_file = os.path.join(tmp_dir, 'preview')
+            metadata_file = os.path.join(tmp_dir, 'metadata')
+            request.select_files([chosen, preview_file, metadata_file])
         elif hasattr(request, 'cancel'):
             # WebKit2 only
             request.cancel()

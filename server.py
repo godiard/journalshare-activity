@@ -19,7 +19,7 @@ import sys
 import logging
 import json
 import cgi
-import magic
+import dbus
 
 from gi.repository import Gio
 from sugar3 import network
@@ -103,8 +103,6 @@ def parse_multipart(fp, pdict):
         line = headers['content-disposition']
         if not line:
             continue
-        else:
-            logging.error('CONTENT DISPOSITION %s', line)
         key, params = cgi.parse_header(line)
         if key != 'form-data':
             continue
@@ -112,13 +110,19 @@ def parse_multipart(fp, pdict):
             name = params['name']
         else:
             continue
-        if 'filename' in params:
-            filenamesdict[name] = params['filename']
 
         if name in partdict:
             partdict[name].append(data)
         else:
             partdict[name] = [data]
+
+        if 'filename' in params:
+            filename = params['filename']
+
+        if name in filenamesdict:
+            filenamesdict[name].append(filename)
+        else:
+            filenamesdict[name] = [filename]
 
     return partdict, filenamesdict
 
@@ -143,32 +147,41 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                 return None
             ctype, pdict = cgi.parse_header(ctype)
             file_fields, filenames = parse_multipart(self.rfile, pdict)
-            file_content = file_fields['journal_item'][0]
-            logging.error('CONTENT %s', file_content)
-            file_name = filenames['journal_item']
-            logging.error('NAME %s', file_name)
-            # save to the journal
-            new_dsobject = datastore.create()
-            file_path = os.path.join(self.server.activity_root, 'instance',
-                    file_name)
-            f = open(file_path, 'w')
-            try:
-                f.write(file_content)
-            finally:
-                f.close()
+
+            i = 0
+            preview_content = None
+            metadata_content = None
+            for file_name in filenames['journal_item']:
+                if file_name == 'preview':
+                    preview_content = file_fields['journal_item'][i]
+                elif file_name == 'metadata':
+                    metadata_content = file_fields['journal_item'][i]
+                else:
+                    file_content = file_fields['journal_item'][i]
+                    # save to the journal
+                    new_dsobject = datastore.create()
+                    file_path = os.path.join(self.server.activity_root,
+                            'instance', file_name)
+                    f = open(file_path, 'w')
+                    try:
+                        f.write(file_content)
+                    finally:
+                        f.close()
+                i = i + 1
+
             #Set the file_path in the datastore.
             new_dsobject.set_file_path(file_path)
-            new_dsobject.metadata['title'] = file_name
-            # get mime type
-            m = magic.open(magic.MAGIC_MIME)
-            m.load()
-            mime_type = m.file(file_path)
-            if mime_type.find(';') > 0:
-                # can be 'application/ogg; charset=binary'
-                mime_type = mime_type[:mime_type.find(';')]
-            new_dsobject.metadata['mime_type'] = mime_type
+            if metadata_content is not None:
+                metadata = json.loads(metadata_content)
+                for key in metadata.keys():
+                    new_dsobject.metadata[key] = metadata[key]
+            if preview_content is not None and preview_content != '':
+                new_dsobject.metadata['preview'] = \
+                        dbus.ByteArray(preview_content)
+
             # mark as favorite
             new_dsobject.metadata['keep'] = '1'
+
             datastore.write(new_dsobject)
             #redirect to index.html page
             self.send_response(301)
@@ -270,7 +283,6 @@ class JournalManager():
         self.dsobjects, self._nobjects = datastore.find({'keep': '1'})
         results = []
         for dsobj in self.dsobjects:
-            logging.error(dir(dsobj))
             title = ''
             desc = ''
             comment = []
