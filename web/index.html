@@ -5,6 +5,13 @@
     <link href="style.css" rel="stylesheet" type="text/css"/>
     <script src="jquery-1.9.1.min.js" type="text/javascript"></script>
     <script type="text/javascript">
+
+        $.getJSON("/datastore/owner_info", function(owner_info) {
+            $('#header').append("Journal of " + owner_info.nick_name);
+            $('#header').css('color', owner_info.stroke_color);
+            $('#header').css('background-color', owner_info.fill_color);
+        });
+
         $.getJSON("/datastore/starred", function(starred) {
             for (var i = 0; i < starred.length; i++)
             {
@@ -24,6 +31,9 @@
     </script>
   </head>
   <body>
+      <div id="header">
+      </div>
+
       <table>
       <tr><td>
       <form action="/datastore/upload" method="post" enctype="multipart/form-data">

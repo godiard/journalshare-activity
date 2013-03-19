@@ -7,6 +7,15 @@ body {
   width: 100%;
 }
 
+#header {
+  font-family: sans-serif,cantarell,helvetica;
+  text-align: center;
+  font-size: 26px;
+  font-weight: bold;
+  width: 100%;
+  padding: 20px;
+}
+
 .title {
   font-family: sans-serif,cantarell,helvetica;
   color: #fff;

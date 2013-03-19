@@ -24,6 +24,8 @@ import dbus
 from gi.repository import Gio
 from sugar3 import network
 from sugar3.datastore import datastore
+from sugar3.graphics.xocolor import XoColor
+from sugar3 import profile
 
 from warnings import filterwarnings, catch_warnings
 with catch_warnings():
@@ -212,19 +214,22 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
 
             if self.path.startswith('/datastore'):
                 # queries to the datastore
-                jm = JournalManager()
                 if self.path == '/datastore/starred':
                     self.send_header_response("text/html")
-                    self.wfile.write(jm.get_starred())
+                    self.wfile.write(server.jm.get_starred())
                     logging.error('Returned datastore/starred')
-                if self.path.startswith('/datastore/id='):
+                elif self.path == '/datastore/owner_info':
+                    self.send_header_response("text/html")
+                    self.wfile.write(server.jm.get_journal_owner_info())
+                elif self.path.startswith('/datastore/id='):
                     object_id = self.path[self.path.find('=') + 1:]
-                    mime_type, title, content = jm.get_object_by_id(object_id)
+                    mime_type, title, content = \
+                            server.jm.get_object_by_id(object_id)
                     self.send_header_response(mime_type, title)
                     self.wfile.write(content)
-                if self.path.startswith('/datastore/preview/id='):
+                elif self.path.startswith('/datastore/preview/id='):
                     object_id = self.path[self.path.find('=') + 1:]
-                    preview = jm.get_preview_by_id(object_id)
+                    preview = server.jm.get_preview_by_id(object_id)
                     self.send_header_response('image/png')
                     self.wfile.write(preview)
 
@@ -245,14 +250,23 @@ class JournalHTTPServer(network.GlibTCPServer):
         """
         self.activity_path = activity_path
         self.activity_root = activity_root
+        self.jm = JournalManager()
         network.GlibTCPServer.__init__(self, server_address,
                                        JournalHTTPRequestHandler)
-
 
 class JournalManager():
 
     def __init__(self):
-        pass
+        self.nick_name = profile.get_nick_name()
+        self.xo_color = profile.get_color()
+
+    def get_journal_owner_info(self):
+        info = {}
+        info['nick_name'] = self.nick_name
+        info['stroke_color'] = self.xo_color.get_stroke_color()
+        info['fill_color'] = self.xo_color.get_fill_color()
+        logging.error('INFO %s', info)
+        return json.dumps(info)
 
     def get_object_by_id(self, object_id):
         dsobj = datastore.get(object_id)
