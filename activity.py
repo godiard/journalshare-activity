@@ -43,12 +43,14 @@ class JournalShare(activity.Activity):
 
         activity.Activity.__init__(self, handle)
 
-        activity_path = activity.get_bundle_path()
-        activity_root = activity.get_activity_root()
-        #TODO: check available port
+        self.server_proc = None
         self.port = 2500
-        self.server_proc = subprocess.Popen(['/bin/python', 'server.py',
-            activity_path, activity_root, str(self.port)])
+        if not self.shared_activity:
+            activity_path = activity.get_bundle_path()
+            activity_root = activity.get_activity_root()
+            #TODO: check available port
+            self.server_proc = subprocess.Popen(['/bin/python', 'server.py',
+                activity_path, activity_root, str(self.port)])
 
         toolbar_box = ToolbarBox()
 
@@ -80,7 +82,9 @@ class JournalShare(activity.Activity):
             # Only present in WebKit1 > 1.9.3 and WebKit2
             pass
 
-        self.view.load_uri('http://localhost:2500/web/index.html')
+        self.view.load_html_string('<html><body>Loading...</body></html>',
+                'file:///')
+
         self.view.show()
         scrolled = Gtk.ScrolledWindow()
         scrolled.add(self.view)
@@ -99,6 +103,9 @@ class JournalShare(activity.Activity):
             else:
                 # Wait for a successful join before trying to connect
                 self.connect("joined", self._joined_cb)
+        else:
+            self.view.load_uri('http://0.0.0.0:%d/web/index.html' %
+                    self.port)
 
     def _joined_cb(self, also_self):
         """Callback for when a shared activity is joined.
@@ -224,5 +231,6 @@ class JournalShare(activity.Activity):
         pass
 
     def can_close(self):
-        self.server_proc.kill()
+        if self.server_proc is not None:
+            self.server_proc.kill()
         return True
