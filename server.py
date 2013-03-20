@@ -290,7 +290,15 @@ class JournalManager():
         dsobj = datastore.get(object_id)
         preview = None
         if 'preview' in dsobj.metadata:
-            preview = dsobj.metadata['preview']
+            # TODO: copied from expandedentry.py
+            # is needed because record is saving the preview encoded
+            if dsobj.metadata['preview'][1:4] == 'PNG':
+                preview = dsobj.metadata['preview']
+            else:
+                # TODO: We are close to be able to drop this.
+                import base64
+                preview = base64.b64decode(
+                        dsobj.metadata['preview'])
         return preview
 
     def get_starred(self):
