@@ -159,6 +159,10 @@ class JournalShare(activity.Activity):
 
     def watch_for_tubes(self):
         """Watch for new tubes."""
+        if self.server_proc is not None:
+            # I am sharing, then, don't try to connect to the tubes
+            return
+
         tubes_chan = self.shared_activity.telepathy_tubes_chan
 
         tubes_chan[telepathy.CHANNEL_TYPE_TUBES].connect_to_signal('NewTube',
