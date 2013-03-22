@@ -161,7 +161,6 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                 else:
                     file_content = file_fields['journal_item'][i]
                     # save to the journal
-                    new_dsobject = datastore.create()
                     file_path = os.path.join(self.server.activity_root,
                             'instance', file_name)
                     f = open(file_path, 'w')
@@ -171,20 +170,9 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                         f.close()
                 i = i + 1
 
-            #Set the file_path in the datastore.
-            new_dsobject.set_file_path(file_path)
-            if metadata_content is not None:
-                metadata = json.loads(metadata_content)
-                for key in metadata.keys():
-                    new_dsobject.metadata[key] = metadata[key]
-            if preview_content is not None and preview_content != '':
-                new_dsobject.metadata['preview'] = \
-                        dbus.ByteArray(preview_content)
+            server.jm.create_object(file_path, metadata_content,
+                                    preview_content)
 
-            # mark as favorite
-            new_dsobject.metadata['keep'] = '1'
-
-            datastore.write(new_dsobject)
             #redirect to index.html page
             self.send_response(301)
             self.send_header('Location', '/web/index.html')
@@ -267,6 +255,22 @@ class JournalManager():
         info['fill_color'] = self.xo_color.get_fill_color()
         logging.error('INFO %s', info)
         return json.dumps(info)
+
+    def create_object(self, file_path, metadata_content, preview_content):
+        new_dsobject = datastore.create()
+        #Set the file_path in the datastore.
+        new_dsobject.set_file_path(file_path)
+        if metadata_content is not None:
+            metadata = json.loads(metadata_content)
+            for key in metadata.keys():
+                new_dsobject.metadata[key] = metadata[key]
+        if preview_content is not None and preview_content != '':
+            new_dsobject.metadata['preview'] = \
+                    dbus.ByteArray(preview_content)
+        # mark as favorite
+        new_dsobject.metadata['keep'] = '1'
+        datastore.write(new_dsobject)
+        return new_dsobject
 
     def get_object_by_id(self, object_id):
         dsobj = datastore.get(object_id)
