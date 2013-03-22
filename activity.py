@@ -36,6 +36,9 @@ from filepicker import FilePicker
 
 JOURNAL_STREAM_SERVICE = 'journal-activity-http'
 
+# directory exists if powerd is running.  create a file here,
+# named after our pid, to inhibit suspend.
+POWERD_INHIBIT_DIR = '/var/run/powerd-inhibit-suspend'
 
 class JournalShare(activity.Activity):
 
@@ -106,6 +109,8 @@ class JournalShare(activity.Activity):
         else:
             self.view.load_uri('http://0.0.0.0:%d/web/index.html' %
                     self.port)
+            # if I am the server
+            self._inhibit_suspend()
 
     def _joined_cb(self, also_self):
         """Callback for when a shared activity is joined.
@@ -237,4 +242,26 @@ class JournalShare(activity.Activity):
     def can_close(self):
         if self.server_proc is not None:
             self.server_proc.kill()
+        self._allow_suspend()
         return True
+
+    # power management (almost copied from clock activity)
+
+    def powerd_running(self):
+        return os.access(POWERD_INHIBIT_DIR, os.W_OK)
+
+    def _inhibit_suspend(self):
+        if self.powerd_running():
+            fd = open(POWERD_INHIBIT_DIR + "/%u" % os.getpid(), 'w')
+            fd.close()
+            return True
+        else:
+            return False
+
+    def _allow_suspend(self):
+        if self.powerd_running():
+            if os.path.exists(POWERD_INHIBIT_DIR + "/%u" % os.getpid()):
+                os.unlink(POWERD_INHIBIT_DIR + "/%u" % os.getpid())
+            return True
+        else:
+            return False
