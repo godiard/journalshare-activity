@@ -14,8 +14,8 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-import subprocess
 import logging
+from gettext import gettext as _
 
 from gi.repository import GObject
 GObject.threads_init()
@@ -33,6 +33,7 @@ from sugar3.graphics.toolbarbox import ToolbarBox
 
 import downloadmanager
 from filepicker import FilePicker
+import server
 
 JOURNAL_STREAM_SERVICE = 'journal-activity-http'
 
@@ -52,8 +53,7 @@ class JournalShare(activity.Activity):
             activity_path = activity.get_bundle_path()
             activity_root = activity.get_activity_root()
             #TODO: check available port
-            self.server_proc = subprocess.Popen(['/bin/python', 'server.py',
-                activity_path, activity_root, str(self.port)])
+            server.run_server(activity_path, activity_root, self.port)
 
         toolbar_box = ToolbarBox()
 

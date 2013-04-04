@@ -21,11 +21,18 @@ import json
 import cgi
 import dbus
 
+import BaseHTTPServer
+from SimpleHTTPServer import SimpleHTTPRequestHandler
+import SocketServer
+import socket
+import select
+
 from gi.repository import Gio
 from sugar3 import network
 from sugar3.datastore import datastore
 from sugar3.graphics.xocolor import XoColor
 from sugar3 import profile
+
 
 from warnings import filterwarnings, catch_warnings
 with catch_warnings():
@@ -129,7 +136,7 @@ def parse_multipart(fp, pdict):
     return partdict, filenamesdict
 
 
-class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
+class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP Request Handler to send data to the webview.
 
     RequestHandler class that integrates with Glib mainloop. It writes
@@ -137,10 +144,14 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
     mainloop between chunks.
 
     """
-    def do_HEAD(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
+
+    def __init__(self, activity_path, activity_root, jm, request,
+                 client_address, server):
+        self.activity_path = activity_path
+        self.activity_root = activity_root
+        self.jm = jm
+        SimpleHTTPRequestHandler.__init__(self, request, client_address,
+                                          server)
 
     def do_POST(self):
         if self.path == '/datastore/upload':
@@ -161,7 +172,7 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                 else:
                     file_content = file_fields['journal_item'][i]
                     # save to the journal
-                    file_path = os.path.join(self.server.activity_root,
+                    file_path = os.path.join(self.activity_root,
                             'instance', file_name)
                     f = open(file_path, 'w')
                     try:
@@ -170,8 +181,8 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                         f.close()
                 i = i + 1
 
-            server.jm.create_object(file_path, metadata_content,
-                                    preview_content)
+            self.jm.create_object(file_path, metadata_content,
+                                  preview_content)
 
             #redirect to index.html page
             self.send_response(301)
@@ -184,11 +195,12 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
 
         file_used = False
         if self.path:
+            logging.error('Requested path %s', self.path)
             if self.path.startswith('/web'):
                 # TODO: check mime_type
                 self.send_header_response("text/html")
                 # return files requested in the web directory
-                file_path = self.server.activity_path + self.path
+                file_path = self.activity_path + self.path
                 logging.error('Requested file %s', file_path)
 
                 if os.path.isfile(file_path):
@@ -196,7 +208,7 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                     f = Gio.File.new_for_path(file_path)
                     _error, content, _time = f.load_contents(None)
 
-                    logging.error('Closing requested file %s', file_path)
+                    #logging.error('Closing requested file %s', file_path)
                     self.wfile.write(content)
                     file_used = True
 
@@ -204,20 +216,20 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
                 # queries to the datastore
                 if self.path == '/datastore/starred':
                     self.send_header_response("text/html")
-                    self.wfile.write(server.jm.get_starred())
+                    self.wfile.write(self.jm.get_starred())
                     logging.error('Returned datastore/starred')
                 elif self.path == '/datastore/owner_info':
                     self.send_header_response("text/html")
-                    self.wfile.write(server.jm.get_journal_owner_info())
+                    self.wfile.write(self.jm.get_journal_owner_info())
                 elif self.path.startswith('/datastore/id='):
                     object_id = self.path[self.path.find('=') + 1:]
                     mime_type, title, content = \
-                            server.jm.get_object_by_id(object_id)
+                            self.jm.get_object_by_id(object_id)
                     self.send_header_response(mime_type, title)
                     self.wfile.write(content)
                 elif self.path.startswith('/datastore/preview/id='):
                     object_id = self.path[self.path.find('=') + 1:]
-                    preview = server.jm.get_preview_by_id(object_id)
+                    preview = self.jm.get_preview_by_id(object_id)
                     self.send_header_response('image/png')
                     self.wfile.write(preview)
 
@@ -230,23 +242,55 @@ class JournalHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
         self.end_headers()
 
 
-class JournalHTTPServer(network.GlibTCPServer):
+class JournalHTTPServer(BaseHTTPServer.HTTPServer):
     """HTTP Server for transferring document while collaborating."""
 
-    def __init__(self, server_address, activity_path, activity_root):
-        """Set up the GlibTCPServer with the JournalHTTPRequestHandler.
+    # from wikipedia activity
+    def serve_forever(self, poll_interval=0.5):
+        """Overridden version of BaseServer.serve_forever that does not fail
+        to work when EINTR is received.
         """
-        self.activity_path = activity_path
-        self.activity_root = activity_root
-        self.jm = JournalManager()
-        network.GlibTCPServer.__init__(self, server_address,
-                                       JournalHTTPRequestHandler)
+        self._BaseServer__serving = True
+        self._BaseServer__is_shut_down.clear()
+        while self._BaseServer__serving:
+
+            # XXX: Consider using another file descriptor or
+            # connecting to the socket to wake this up instead of
+            # polling. Polling reduces our responsiveness to a
+            # shutdown request and wastes cpu at all other times.
+            try:
+                r, w, e = select.select([self], [], [], poll_interval)
+            except select.error, e:
+                if e[0] == errno.EINTR:
+                    logging.debug("got eintr")
+                    continue
+                raise
+            if r:
+                self._handle_request_noblock()
+        self._BaseServer__is_shut_down.set()
+
+    def server_bind(self):
+        """Override server_bind in HTTPServer to not use
+        getfqdn to get the server name because is very slow."""
+        SocketServer.TCPServer.server_bind(self)
+        host, port = self.socket.getsockname()[:2]
+        self.server_name = 'localhost'
+        self.server_port = port
+
 
 class JournalManager():
 
     def __init__(self):
-        self.nick_name = profile.get_nick_name()
-        self.xo_color = profile.get_color()
+        try:
+            self.nick_name = profile.get_nick_name()
+        except:
+            logging.exception('Can''t get nick_name')
+            self.nick_name = ''
+        try:
+            self.xo_color = profile.get_color()
+        except:
+            logging.exception('Can''t get xo_color')
+            self.xo_color = XoColor()
 
     def get_journal_owner_info(self):
         info = {}
@@ -306,9 +350,11 @@ class JournalManager():
         return preview
 
     def get_starred(self):
-        self.dsobjects, self._nobjects = datastore.find({'keep': '1'})
+        logging.error('Before find datastore')
+        dsobjects, _nobjects = datastore.find({'keep': '1'})
+        logging.error('After find datastore')
         results = []
-        for dsobj in self.dsobjects:
+        for dsobj in dsobjects:
             title = ''
             desc = ''
             comment = []
@@ -327,22 +373,19 @@ class JournalManager():
                 logging.debug('dsobj has no metadata')
             results.append({'title': title, 'desc': desc, 'comment': comment,
                     'id': object_id})
+        logging.error(results)
         return json.dumps(results)
 
 
-def setup_server(activity_path, activity_root, port):
-    server = JournalHTTPServer(("", port), activity_path, activity_root)
-    return server
-
-
-if __name__ == "__main__":
-    activity_path = sys.argv[1]
-    activity_root = sys.argv[2]
-    port = int(sys.argv[3])
-    server = setup_server(activity_path, activity_root, port)
-    try:
-        logging.debug("Before start server")
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print "Shutting down server"
-        server.shutdown()
+def run_server(activity_path, activity_root, port):
+    # init the journal manager before start the thread
+    jm = JournalManager()
+    from threading import Thread
+    httpd = JournalHTTPServer(("", port),
+        lambda *args: JournalHTTPRequestHandler(activity_path, activity_root,
+                                                jm, *args))
+    server = Thread(target=httpd.serve_forever)
+    server.setDaemon(True)
+    logging.debug("Before start server")
+    server.start()
+    logging.debug("After start server")
