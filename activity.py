@@ -25,11 +25,17 @@ from gi.repository import WebKit
 import telepathy
 import dbus
 import os.path
+import base64
+import json
 
 from sugar3.activity import activity
 from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbarbox import ToolbarBox
+from sugar3.graphics.toolbutton import ToolButton
+from sugar3.datastore import datastore
+from sugar3.graphics.xocolor import XoColor
+from sugar3 import profile
 
 import downloadmanager
 from filepicker import FilePicker
@@ -41,25 +47,46 @@ JOURNAL_STREAM_SERVICE = 'journal-activity-http'
 # named after our pid, to inhibit suspend.
 POWERD_INHIBIT_DIR = '/var/run/powerd-inhibit-suspend'
 
+
 class JournalShare(activity.Activity):
 
     def __init__(self, handle):
 
         activity.Activity.__init__(self, handle)
 
+        # a list with the object_id of the shared items.
+        # if is a only element == '*' means all the favorite items
+        # are selected
+        self._shared_items = []
+        self._activity_path = activity.get_bundle_path()
+        self._activity_root = activity.get_activity_root()
+        self._jm = JournalManager(self._activity_root)
+
         self.server_proc = None
         self.port = 2500
         if not self.shared_activity:
-            activity_path = activity.get_bundle_path()
-            activity_root = activity.get_activity_root()
             #TODO: check available port
-            server.run_server(activity_path, activity_root, self.port)
+            server.run_server(self._activity_path, self._activity_root,
+                              self._jm, self.port)
 
         toolbar_box = ToolbarBox()
 
         activity_button = ActivityToolbarButton(self)
         toolbar_box.toolbar.insert(activity_button, 0)
         activity_button.show()
+
+        add_button = ToolButton('list-add')
+        add_button.set_tooltip(_('Add item to share'))
+        add_button.show()
+        add_button.connect('clicked', self.__add_clicked_cb)
+        toolbar_box.toolbar.insert(add_button, -1)
+
+        add_favorites_button = ToolButton('list-add')
+        add_favorites_button.set_tooltip(_('Add favorite items to share'))
+        add_favorites_button.show()
+        add_favorites_button.connect('clicked',
+                                     self.__add_favorites_clicked_cb)
+        toolbar_box.toolbar.insert(add_favorites_button, -1)
 
         separator = Gtk.SeparatorToolItem()
         separator.props.draw = False
@@ -118,6 +145,12 @@ class JournalShare(activity.Activity):
         """
         self.watch_for_tubes()
         GObject.idle_add(self._get_view_information)
+
+    def __add_clicked_cb(self, button):
+        pass
+
+    def __add_favorites_clicked_cb(self, button):
+        pass
 
     def _get_view_information(self):
         # Pick an arbitrary tube we can try to connect to the server
@@ -243,6 +276,13 @@ class JournalShare(activity.Activity):
         if self.server_proc is not None:
             self.server_proc.kill()
         self._allow_suspend()
+        # remove temporary files
+        instance_path = self._activity_root + '/instance/'
+        for file_name in os.listdir(instance_path):
+            file_path = os.path.join(instance_path, file_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+
         return True
 
     # power management (almost copied from clock activity)
@@ -265,3 +305,110 @@ class JournalShare(activity.Activity):
             return True
         else:
             return False
+
+
+class JournalManager():
+
+    def __init__(self, activity_root):
+        self._instance_path = activity_root + '/instance/'
+        try:
+            self.nick_name = profile.get_nick_name()
+        except:
+            logging.exception('Can''t get nick_name')
+            self.nick_name = ''
+        try:
+            self.xo_color = profile.get_color()
+        except:
+            logging.exception('Can''t get xo_color')
+            self.xo_color = XoColor()
+
+        # write json files
+        owner_info_file_path = self._instance_path + 'owner_info.json'
+        owner_info_file = open(owner_info_file_path, 'w')
+        owner_info_file.write(self.get_journal_owner_info())
+        owner_info_file.close()
+
+        selected_file_path = self._instance_path + 'selected.json'
+        selected_file = open(selected_file_path, 'w')
+        # TODO
+        selected_file.write(self.get_starred())
+        selected_file.close()
+
+    def get_journal_owner_info(self):
+        info = {}
+        info['nick_name'] = self.nick_name
+        info['stroke_color'] = self.xo_color.get_stroke_color()
+        info['fill_color'] = self.xo_color.get_fill_color()
+        logging.error('INFO %s', info)
+        return json.dumps(info)
+
+    def create_object(self, file_path, metadata_content, preview_content):
+        new_dsobject = datastore.create()
+        #Set the file_path in the datastore.
+        new_dsobject.set_file_path(file_path)
+        if metadata_content is not None:
+            metadata = json.loads(metadata_content)
+            for key in metadata.keys():
+                new_dsobject.metadata[key] = metadata[key]
+        if preview_content is not None and preview_content != '':
+            new_dsobject.metadata['preview'] = \
+                    dbus.ByteArray(preview_content)
+        # mark as favorite
+        new_dsobject.metadata['keep'] = '1'
+        datastore.write(new_dsobject)
+        return new_dsobject
+
+    def get_starred(self):
+        logging.error('Before find datastore')
+        dsobjects, _nobjects = datastore.find({'keep': '1'})
+        logging.error('After find datastore')
+        results = []
+        for dsobj in dsobjects:
+            title = ''
+            desc = ''
+            comment = []
+            object_id = dsobj.object_id
+            if hasattr(dsobj, 'metadata'):
+                if 'title' in dsobj.metadata:
+                    title = dsobj.metadata['title']
+                if 'description' in dsobj.metadata:
+                    desc = dsobj.metadata['description']
+                if 'comments' in dsobj.metadata:
+                    try:
+                        comment = json.loads(dsobj.metadata['comments'])
+                    except:
+                        comment = []
+                if 'preview' in dsobj.metadata:
+                    # TODO: copied from expandedentry.py
+                    # is needed because record is saving the preview encoded
+                    if dsobj.metadata['preview'][1:4] == 'PNG':
+                        preview = dsobj.metadata['preview']
+                    else:
+                        # TODO: We are close to be able to drop this.
+                        preview = base64.b64decode(
+                                dsobj.metadata['preview'])
+                    preview_path = self._instance_path + 'preview_id_' + \
+                            object_id
+                    preview_file = open(preview_path, 'w')
+                    preview_file.write(preview)
+                    preview_file.close()
+                if 'mime_type' in dsobj.metadata:
+                    mime_type_path = self._instance_path + 'mime_type_id_' + \
+                            object_id
+                    mime_type_file = open(mime_type_path, 'w')
+                    mime_type_file.write(dsobj.metadata['title'])
+                    mime_type_file.close()
+
+            else:
+                logging.debug('dsobj has no metadata')
+
+            # create a link to be read from the web server
+            file_path = self._instance_path + 'id_' + object_id
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+            os.link(dsobj.file_path, file_path)
+
+            results.append({'title': title, 'desc': desc, 'comment': comment,
+                    'id': object_id})
+        logging.error(results)
+        return json.dumps(results)

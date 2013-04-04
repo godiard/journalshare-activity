@@ -17,21 +17,14 @@
 import os
 import sys
 import logging
-import json
 import cgi
-import dbus
 
 import BaseHTTPServer
 from SimpleHTTPServer import SimpleHTTPRequestHandler
 import SocketServer
-import socket
 import select
 
-from gi.repository import Gio
-from sugar3 import network
-from sugar3.datastore import datastore
-from sugar3.graphics.xocolor import XoColor
-from sugar3 import profile
+from gi.repository import GObject
 
 
 from warnings import filterwarnings, catch_warnings
@@ -181,8 +174,8 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
                         f.close()
                 i = i + 1
 
-            self.jm.create_object(file_path, metadata_content,
-                                  preview_content)
+            GObject.add_idle(self.jm.create_object, file_path,
+                             metadata_content, preview_content)
 
             #redirect to index.html page
             self.send_response(301)
@@ -193,7 +186,6 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
         """Respond to a GET request."""
         #logging.error('inside do_get dir(self) %s', dir(self))
 
-        file_used = False
         if self.path:
             logging.error('Requested path %s', self.path)
             if self.path.startswith('/web'):
@@ -201,37 +193,36 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_header_response("text/html")
                 # return files requested in the web directory
                 file_path = self.activity_path + self.path
-                logging.error('Requested file %s', file_path)
 
                 if os.path.isfile(file_path):
                     logging.error('Opening requested file %s', file_path)
-                    f = Gio.File.new_for_path(file_path)
-                    _error, content, _time = f.load_contents(None)
-
-                    #logging.error('Closing requested file %s', file_path)
+                    f = open(file_path)
+                    content = f.read()
+                    f.close()
                     self.wfile.write(content)
-                    file_used = True
 
             if self.path.startswith('/datastore'):
-                # queries to the datastore
-                if self.path == '/datastore/starred':
-                    self.send_header_response("text/html")
-                    self.wfile.write(self.jm.get_starred())
-                    logging.error('Returned datastore/starred')
-                elif self.path == '/datastore/owner_info':
-                    self.send_header_response("text/html")
-                    self.wfile.write(self.jm.get_journal_owner_info())
-                elif self.path.startswith('/datastore/id='):
-                    object_id = self.path[self.path.find('=') + 1:]
-                    mime_type, title, content = \
-                            self.jm.get_object_by_id(object_id)
-                    self.send_header_response(mime_type, title)
+                # return files requested in the activity instance directory
+                path = self.path.replace('datastore', 'instance')
+                file_path = self.activity_root + path
+
+                mime_type = 'text/html'
+                # if is reading a file, try to read the mime_type
+                if file_path.find('/id_') > -1:
+                    mime_tipe_path = file_path.replace('/id_',
+                                                       '/mime_type_id_')
+                    if os.path.isfile(mime_tipe_path):
+                        f = open(mime_tipe_path)
+                        mime_type = f.read()
+                        f.close()
+                self.send_header_response(mime_type)
+
+                if os.path.isfile(file_path):
+                    logging.error('Opening requested file %s', file_path)
+                    f = open(file_path)
+                    content = f.read()
+                    f.close()
                     self.wfile.write(content)
-                elif self.path.startswith('/datastore/preview/id='):
-                    object_id = self.path[self.path.find('=') + 1:]
-                    preview = self.jm.get_preview_by_id(object_id)
-                    self.send_header_response('image/png')
-                    self.wfile.write(preview)
 
     def send_header_response(self, mime_type, file_name=None):
         self.send_response(200)
@@ -278,108 +269,8 @@ class JournalHTTPServer(BaseHTTPServer.HTTPServer):
         self.server_port = port
 
 
-class JournalManager():
-
-    def __init__(self):
-        try:
-            self.nick_name = profile.get_nick_name()
-        except:
-            logging.exception('Can''t get nick_name')
-            self.nick_name = ''
-        try:
-            self.xo_color = profile.get_color()
-        except:
-            logging.exception('Can''t get xo_color')
-            self.xo_color = XoColor()
-
-    def get_journal_owner_info(self):
-        info = {}
-        info['nick_name'] = self.nick_name
-        info['stroke_color'] = self.xo_color.get_stroke_color()
-        info['fill_color'] = self.xo_color.get_fill_color()
-        logging.error('INFO %s', info)
-        return json.dumps(info)
-
-    def create_object(self, file_path, metadata_content, preview_content):
-        new_dsobject = datastore.create()
-        #Set the file_path in the datastore.
-        new_dsobject.set_file_path(file_path)
-        if metadata_content is not None:
-            metadata = json.loads(metadata_content)
-            for key in metadata.keys():
-                new_dsobject.metadata[key] = metadata[key]
-        if preview_content is not None and preview_content != '':
-            new_dsobject.metadata['preview'] = \
-                    dbus.ByteArray(preview_content)
-        # mark as favorite
-        new_dsobject.metadata['keep'] = '1'
-        datastore.write(new_dsobject)
-        return new_dsobject
-
-    def get_object_by_id(self, object_id):
-        dsobj = datastore.get(object_id)
-        mime_type = ''
-        if 'mime_type' in dsobj.metadata:
-            mime_type = dsobj.metadata['mime_type']
-        if mime_type == '':
-            # TODO: what type should we use if not available?
-            mime_type = 'application/x-binary'
-        title = None
-        if 'title' in dsobj.metadata:
-            title = dsobj.metadata['title']
-
-        f = open(dsobj.file_path, 'r')
-        # TODO: read all the file in memory?
-        content = f.read()
-        f.close()
-        return mime_type, title, content
-
-    def get_preview_by_id(self, object_id):
-        dsobj = datastore.get(object_id)
-        preview = None
-        if 'preview' in dsobj.metadata:
-            # TODO: copied from expandedentry.py
-            # is needed because record is saving the preview encoded
-            if dsobj.metadata['preview'][1:4] == 'PNG':
-                preview = dsobj.metadata['preview']
-            else:
-                # TODO: We are close to be able to drop this.
-                import base64
-                preview = base64.b64decode(
-                        dsobj.metadata['preview'])
-        return preview
-
-    def get_starred(self):
-        logging.error('Before find datastore')
-        dsobjects, _nobjects = datastore.find({'keep': '1'})
-        logging.error('After find datastore')
-        results = []
-        for dsobj in dsobjects:
-            title = ''
-            desc = ''
-            comment = []
-            object_id = dsobj.object_id
-            if hasattr(dsobj, 'metadata'):
-                if 'title' in dsobj.metadata:
-                    title = dsobj.metadata['title']
-                if 'description' in dsobj.metadata:
-                    desc = dsobj.metadata['description']
-                if 'comments' in dsobj.metadata:
-                    try:
-                        comment = json.loads(dsobj.metadata['comments'])
-                    except:
-                        comment = []
-            else:
-                logging.debug('dsobj has no metadata')
-            results.append({'title': title, 'desc': desc, 'comment': comment,
-                    'id': object_id})
-        logging.error(results)
-        return json.dumps(results)
-
-
-def run_server(activity_path, activity_root, port):
+def run_server(activity_path, activity_root, jm, port):
     # init the journal manager before start the thread
-    jm = JournalManager()
     from threading import Thread
     httpd = JournalHTTPServer(("", port),
         lambda *args: JournalHTTPRequestHandler(activity_path, activity_root,

@@ -7,7 +7,7 @@
     <script type="text/javascript">
 
         function init() {
-            $.getJSON("/datastore/owner_info", function(owner_info) {
+            $.getJSON("/datastore/owner_info.json", function(owner_info) {
                 $('#header').append("Journal of " + owner_info.nick_name);
                 $('#header').css('color', owner_info.stroke_color);
                 $('#header').css('background-color', owner_info.fill_color);
@@ -19,17 +19,17 @@
                 $('#uploadarea').hide();
             }
 
-            $.getJSON("/datastore/starred", function(starred) {
-                for (var i = 0; i < starred.length; i++)
+            $.getJSON("/datastore/selected.json", function(selected) {
+                for (var i = 0; i < selected.length; i++)
                 {
                     $('#journaltable').append("<tr>" +
-                        "<td><img src=/datastore/preview/id=" + starred[i].id + "/></td>"+
+                        "<td><img src=/datastore/preview_id_" + selected[i].id + "></td>"+
                         "<td class='desc_td'>"+
                         "<table class='desc_table'>"+
-                        "<tr><td class='title'>" + starred[i].title + "</td></tr>"+
-                        "<tr><td>" + starred[i].desc + "</td></tr>"+
+                        "<tr><td class='title'>" + selected[i].title + "</td></tr>"+
+                        "<tr><td>" + selected[i].desc + "</td></tr>"+
                         (!local ? "<tr><td>"+
-                        "<a class='download_link' href='/datastore/id=" + starred[i].id +"'>"+
+                        "<a class='download_link' href='/datastore/id_" + selected[i].id +"'>"+
                         "Download</a></td></tr>" : "") +
                         "</table>"+
                         "</td>" +
