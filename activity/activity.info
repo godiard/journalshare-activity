@@ -3,6 +3,6 @@ name = Journal Share
 summary = Want to share your work in easy way? Journal Share could help you, it's just a webserver which allow the users connected in the same network to see your starred objects in your Journal only using a web browser.
 activity_version = 2
 bundle_id = org.sugarlabs.JournalShare
-exec = sugar-activity activity.JournalShare -s
+exec = sugar-activity activity.JournalShare
 icon = journal-share-icon
 license = GPLv3+

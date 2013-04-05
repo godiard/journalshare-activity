@@ -285,10 +285,23 @@ class JournalShare(activity.Activity):
         return True
 
     def read_file(self, file_path):
-        pass
+        f = open(file_path)
+        json_data = f.read()
+        f.close()
+        # the information is saved in a dictionary
+        # now is only the list of shared items
+        # but later we can add more info
+        state = json.loads(json_data)
+        if 'shared_items' in state:
+            self._shared_items = state['shared_items']
+        self._update_shared_items()
 
     def write_file(self, file_path):
-        pass
+        state = {}
+        state['shared_items'] = self._shared_items
+        f = open(file_path, 'w')
+        f.write(json.dumps(state))
+        f.close()
 
     def can_close(self):
         if self.server_proc is not None:
