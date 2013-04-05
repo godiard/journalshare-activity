@@ -24,7 +24,7 @@ from SimpleHTTPServer import SimpleHTTPRequestHandler
 import SocketServer
 import select
 
-from gi.repository import GObject
+from gi.repository import GLib
 
 
 from warnings import filterwarnings, catch_warnings
@@ -174,7 +174,7 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
                         f.close()
                 i = i + 1
 
-            GObject.add_idle(self.jm.create_object, file_path,
+            GLib.idle_add(self.jm.create_object, file_path,
                              metadata_content, preview_content)
 
             #redirect to index.html page

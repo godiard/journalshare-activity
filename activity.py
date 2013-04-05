@@ -62,6 +62,7 @@ class JournalShare(activity.Activity):
         self._activity_path = activity.get_bundle_path()
         self._activity_root = activity.get_activity_root()
         self._jm = JournalManager(self._activity_root, self._shared_items)
+        self._jm.connect('updated', self.__journal_manager_updated_cb)
 
         self.server_proc = None
         self.port = 2500
@@ -169,6 +170,10 @@ class JournalShare(activity.Activity):
     def _update_shared_items(self):
         self._jm.set_shared_items(self._shared_items)
         self.view.reload()
+
+    def __journal_manager_updated_cb(self, jm):
+        self._shared_items = jm.get_shared_items()
+        self._update_shared_items()
 
     def _get_view_information(self):
         # Pick an arbitrary tube we can try to connect to the server
@@ -338,9 +343,12 @@ class JournalShare(activity.Activity):
             return False
 
 
-class JournalManager():
+class JournalManager(GObject.GObject):
+
+    __gsignals__ = {'updated': (GObject.SignalFlags.RUN_FIRST, None, ([]))}
 
     def __init__(self, activity_root, shared_items):
+        GObject.GObject.__init__(self)
         self._instance_path = activity_root + '/instance/'
         self._shared_items = shared_items
         try:
@@ -372,6 +380,9 @@ class JournalManager():
         selected_file.write(self._prepare_shared_items())
         selected_file.close()
 
+    def get_shared_items(self):
+        return self._shared_items
+
     def get_journal_owner_info(self):
         info = {}
         info['nick_name'] = self.nick_name
@@ -391,10 +402,14 @@ class JournalManager():
         if preview_content is not None and preview_content != '':
             new_dsobject.metadata['preview'] = \
                     dbus.ByteArray(preview_content)
-        # mark as favorite
-        new_dsobject.metadata['keep'] = '1'
         datastore.write(new_dsobject)
-        return new_dsobject
+        if self._shared_items == ['*']:
+            # mark as favorite
+            new_dsobject.metadata['keep'] = '1'
+        else:
+            self._shared_items.append(new_dsobject.object_id)
+        self.emit('updated')
+        return False
 
     def _prepare_shared_items(self):
         results = []
