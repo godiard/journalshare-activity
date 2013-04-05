@@ -35,6 +35,13 @@
                         "</td>" +
                     "</tr>");
                 }
+
+                if (selected.length == 0) {
+                    $('#journaltable').append("<tr>" +
+                        "<td class='error_msg'>No item selected, " +
+                        "add items to share from your Journal." +
+                        "</td></tr>");
+                }
             });
         }
     </script>
