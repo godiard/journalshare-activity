@@ -36,6 +36,7 @@ from sugar3.graphics.toolbutton import ToolButton
 from sugar3.datastore import datastore
 from sugar3.graphics.xocolor import XoColor
 from sugar3 import profile
+from sugar3.graphics.objectchooser import ObjectChooser
 
 import downloadmanager
 from filepicker import FilePicker
@@ -60,7 +61,7 @@ class JournalShare(activity.Activity):
         self._shared_items = []
         self._activity_path = activity.get_bundle_path()
         self._activity_root = activity.get_activity_root()
-        self._jm = JournalManager(self._activity_root)
+        self._jm = JournalManager(self._activity_root, self._shared_items)
 
         self.server_proc = None
         self.port = 2500
@@ -81,7 +82,7 @@ class JournalShare(activity.Activity):
         add_button.connect('clicked', self.__add_clicked_cb)
         toolbar_box.toolbar.insert(add_button, -1)
 
-        add_favorites_button = ToolButton('list-add')
+        add_favorites_button = ToolButton('emblem-favorite')
         add_favorites_button.set_tooltip(_('Add favorite items to share'))
         add_favorites_button.show()
         add_favorites_button.connect('clicked',
@@ -147,10 +148,27 @@ class JournalShare(activity.Activity):
         GObject.idle_add(self._get_view_information)
 
     def __add_clicked_cb(self, button):
-        pass
+        chooser = ObjectChooser(self)
+        try:
+            result = chooser.run()
+            if result == Gtk.ResponseType.ACCEPT:
+                logging.debug('ObjectChooser: %r',
+                        chooser.get_selected_object())
+                jobject = chooser.get_selected_object()
+                if jobject and jobject.file_path:
+                    self._shared_items.append(jobject.object_id)
+                    self._update_shared_items()
+        finally:
+            chooser.destroy()
+            del chooser
 
     def __add_favorites_clicked_cb(self, button):
-        pass
+        self._shared_items = ['*']
+        self._update_shared_items()
+
+    def _update_shared_items(self):
+        self._jm.set_shared_items(self._shared_items)
+        self.view.reload()
 
     def _get_view_information(self):
         # Pick an arbitrary tube we can try to connect to the server
@@ -309,8 +327,9 @@ class JournalShare(activity.Activity):
 
 class JournalManager():
 
-    def __init__(self, activity_root):
+    def __init__(self, activity_root, shared_items):
         self._instance_path = activity_root + '/instance/'
+        self._shared_items = shared_items
         try:
             self.nick_name = profile.get_nick_name()
         except:
@@ -330,8 +349,14 @@ class JournalManager():
 
         selected_file_path = self._instance_path + 'selected.json'
         selected_file = open(selected_file_path, 'w')
-        # TODO
-        selected_file.write(self.get_starred())
+        selected_file.write(self._prepare_shared_items())
+        selected_file.close()
+
+    def set_shared_items(self, shared_items):
+        self._shared_items = shared_items
+        selected_file_path = self._instance_path + 'selected.json'
+        selected_file = open(selected_file_path, 'w')
+        selected_file.write(self._prepare_shared_items())
         selected_file.close()
 
     def get_journal_owner_info(self):
@@ -358,11 +383,18 @@ class JournalManager():
         datastore.write(new_dsobject)
         return new_dsobject
 
-    def get_starred(self):
-        logging.error('Before find datastore')
-        dsobjects, _nobjects = datastore.find({'keep': '1'})
-        logging.error('After find datastore')
+    def _prepare_shared_items(self):
         results = []
+        if not self._shared_items:
+            return json.dumps(results)
+
+        if self._shared_items == ['*']:
+            dsobjects, _nobjects = datastore.find({'keep': '1'})
+        else:
+            dsobjects = []
+            for object_id in self._shared_items:
+                dsobjects.append(datastore.get(object_id))
+
         for dsobj in dsobjects:
             title = ''
             desc = ''
