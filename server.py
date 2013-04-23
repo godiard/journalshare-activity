@@ -15,7 +15,6 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 import os
-import sys
 import logging
 import cgi
 
@@ -26,107 +25,7 @@ import select
 
 from gi.repository import GLib
 
-
-from warnings import filterwarnings, catch_warnings
-with catch_warnings():
-    if sys.py3kwarning:
-        filterwarnings("ignore", ".*mimetools has been removed",
-                       DeprecationWarning)
-    import mimetools
-
-# Maximum input we will accept when REQUEST_METHOD is POST
-# 0 ==> unlimited input
-maxlen = 0
-
-
-def parse_multipart(fp, pdict):
-    """Parse multipart input.
-    Copied from cgi.py , but modified to get the filename
-    Arguments:
-    fp   : input file
-    pdict: dictionary containing other parameters of content-type header
-    filenamedict: dictionary containing filenames if available
-    """
-    boundary = ""
-    if 'boundary' in pdict:
-        boundary = pdict['boundary']
-    if not cgi.valid_boundary(boundary):
-        raise ValueError('Invalid boundary in multipart form: %r' % boundary)
-
-    nextpart = "--" + boundary
-    lastpart = "--" + boundary + "--"
-    partdict = {}
-    filenamesdict = {}
-    terminator = ""
-
-    while terminator != lastpart:
-        bytes = -1
-        data = None
-        if terminator:
-            # At start of next part.  Read headers first.
-            headers = mimetools.Message(fp)
-            clength = headers.getheader('content-length')
-            if clength:
-                try:
-                    bytes = int(clength)
-                except ValueError:
-                    pass
-            if bytes > 0:
-                if maxlen and bytes > maxlen:
-                    raise ValueError('Maximum content length exceeded')
-                data = fp.read(bytes)
-            else:
-                data = ""
-        # Read lines until end of part.
-        lines = []
-        while 1:
-            line = fp.readline()
-            if not line:
-                terminator = lastpart  # End outer loop
-                break
-            if line[:2] == "--":
-                terminator = line.strip()
-                if terminator in (nextpart, lastpart):
-                    break
-            lines.append(line)
-        # Done with part.
-        if data is None:
-            continue
-        if bytes < 0:
-            if lines:
-                # Strip final line terminator
-                line = lines[-1]
-                if line[-2:] == "\r\n":
-                    line = line[:-2]
-                elif line[-1:] == "\n":
-                    line = line[:-1]
-                lines[-1] = line
-                data = "".join(lines)
-        line = headers['content-disposition']
-        if not line:
-            continue
-        key, params = cgi.parse_header(line)
-        if key != 'form-data':
-            continue
-        if 'name' in params:
-            name = params['name']
-        else:
-            continue
-
-        if name in partdict:
-            partdict[name].append(data)
-        else:
-            partdict[name] = [data]
-
-        if 'filename' in params:
-            filename = params['filename']
-
-        if name in filenamesdict:
-            filenamesdict[name].append(filename)
-        else:
-            filenamesdict[name] = [filename]
-
-    return partdict, filenamesdict
+import utils
 
 
 class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
@@ -152,30 +51,25 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
             if not ctype:
                 return None
             ctype, pdict = cgi.parse_header(ctype)
-            file_fields, filenames = parse_multipart(self.rfile, pdict)
+            query = cgi.parse_multipart(self.rfile, pdict)
 
-            i = 0
-            preview_content = None
-            metadata_content = None
-            for file_name in filenames['journal_item']:
-                if file_name == 'preview':
-                    preview_content = file_fields['journal_item'][i]
-                elif file_name == 'metadata':
-                    metadata_content = file_fields['journal_item'][i]
-                else:
-                    file_content = file_fields['journal_item'][i]
-                    # save to the journal
-                    file_path = os.path.join(self.activity_root,
-                            'instance', file_name)
-                    f = open(file_path, 'w')
-                    try:
-                        f.write(file_content)
-                    finally:
-                        f.close()
-                i = i + 1
+            file_content = query.get('journal_item')[0]
+            # save to the journal
+            zipped_file_path = os.path.join(self.activity_root,
+                    'instance', 'received.journal')
+            f = open(zipped_file_path, 'wb')
+            try:
+                f.write(file_content)
+            finally:
+                f.close()
+
+            metadata, preview_data, file_path = \
+                    utils.unpackage_ds_object(zipped_file_path, None)
+
+            logging.error('METADATA %s', metadata)
 
             GLib.idle_add(self.jm.create_object, file_path,
-                             metadata_content, preview_content)
+                             metadata, preview_data)
 
             #redirect to index.html page
             self.send_response(301)
@@ -207,14 +101,8 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
                 file_path = self.activity_root + path
 
                 mime_type = 'text/html'
-                # if is reading a file, try to read the mime_type
-                if file_path.find('/id_') > -1:
-                    mime_tipe_path = file_path.replace('/id_',
-                                                       '/mime_type_id_')
-                    if os.path.isfile(mime_tipe_path):
-                        f = open(mime_tipe_path)
-                        mime_type = f.read()
-                        f.close()
+                if file_path.endswith('.journal'):
+                    mime_type = 'application/journal'
                 self.send_header_response(mime_type)
 
                 if os.path.isfile(file_path):

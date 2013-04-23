@@ -31,6 +31,8 @@ from sugar3.graphics.alert import Alert, TimeoutAlert
 from sugar3.graphics.icon import Icon
 from sugar3.activity import activity
 
+import utils
+
 DS_DBUS_SERVICE = 'org.laptop.sugar.DataStore'
 DS_DBUS_INTERFACE = 'org.laptop.sugar.DataStore'
 DS_DBUS_PATH = '/org/laptop/sugar/DataStore'
@@ -164,22 +166,33 @@ class Download(object):
             self._stop_alert.connect('response', self.__stop_response_cb)
             self._stop_alert.show()
 
-            self.dl_jobject.metadata['title'] = \
-                self._download.get_suggested_filename()
-            self.dl_jobject.metadata['description'] = _('From: %s') \
-                % self._source
-            self.dl_jobject.metadata['progress'] = '100'
-            self.dl_jobject.file_path = self._dest_path
+            if self._dest_path.endswith('.journal'):
 
-            # sniff for a mime type, no way to get headers from WebKit
-            sniffed_mime_type = mime.get_for_file(self._dest_path)
-            self.dl_jobject.metadata['mime_type'] = sniffed_mime_type
+                utils.unpackage_ds_object(self._dest_path, self.dl_jobject)
 
-            datastore.write(self.dl_jobject,
-                            transfer_ownership=True,
-                            reply_handler=self.__internal_save_cb,
-                            error_handler=self.__internal_error_cb,
-                            timeout=360)
+                datastore.write(self.dl_jobject,
+                                transfer_ownership=True,
+                                reply_handler=self.__internal_save_cb,
+                                error_handler=self.__internal_error_cb,
+                                timeout=360)
+
+            else:
+                self.dl_jobject.metadata['title'] = \
+                    self._download.get_suggested_filename()
+                self.dl_jobject.metadata['description'] = _('From: %s') \
+                    % self._source
+                self.dl_jobject.metadata['progress'] = '100'
+                self.dl_jobject.file_path = self._dest_path
+
+                # sniff for a mime type, no way to get headers from WebKit
+                sniffed_mime_type = mime.get_for_file(self._dest_path)
+                self.dl_jobject.metadata['mime_type'] = sniffed_mime_type
+
+                datastore.write(self.dl_jobject,
+                                transfer_ownership=True,
+                                reply_handler=self.__internal_save_cb,
+                                error_handler=self.__internal_error_cb,
+                                timeout=360)
 
         elif state == WebKit.DownloadStatus.CANCELLED:
             self.cleanup()

@@ -25,7 +25,6 @@ from gi.repository import WebKit
 import telepathy
 import dbus
 import os.path
-import base64
 import json
 
 from sugar3.activity import activity
@@ -41,6 +40,7 @@ from sugar3.graphics.objectchooser import ObjectChooser
 import downloadmanager
 from filepicker import FilePicker
 import server
+import utils
 
 JOURNAL_STREAM_SERVICE = 'journal-activity-http'
 
@@ -276,10 +276,7 @@ class JournalShare(activity.Activity):
         picker.destroy()
         if chosen:
             logging.error('CHOSEN %s', chosen)
-            tmp_dir = os.path.dirname(chosen)
-            preview_file = os.path.join(tmp_dir, 'preview')
-            metadata_file = os.path.join(tmp_dir, 'metadata')
-            request.select_files([chosen, preview_file, metadata_file])
+            request.select_files([chosen])
         elif hasattr(request, 'cancel'):
             # WebKit2 only
             request.cancel()
@@ -391,14 +388,14 @@ class JournalManager(GObject.GObject):
         logging.error('INFO %s', info)
         return json.dumps(info)
 
-    def create_object(self, file_path, metadata_content, preview_content):
+    def create_object(self, file_path, metadata, preview_content):
         new_dsobject = datastore.create()
         #Set the file_path in the datastore.
         new_dsobject.set_file_path(file_path)
-        if metadata_content is not None:
-            metadata = json.loads(metadata_content)
-            for key in metadata.keys():
-                new_dsobject.metadata[key] = metadata[key]
+
+        for key in metadata.keys():
+            new_dsobject.metadata[key] = metadata[key]
+
         if preview_content is not None and preview_content != '':
             new_dsobject.metadata['preview'] = \
                     dbus.ByteArray(preview_content)
@@ -438,35 +435,10 @@ class JournalManager(GObject.GObject):
                         comment = json.loads(dsobj.metadata['comments'])
                     except:
                         comment = []
-                if 'preview' in dsobj.metadata:
-                    # TODO: copied from expandedentry.py
-                    # is needed because record is saving the preview encoded
-                    if dsobj.metadata['preview'][1:4] == 'PNG':
-                        preview = dsobj.metadata['preview']
-                    else:
-                        # TODO: We are close to be able to drop this.
-                        preview = base64.b64decode(
-                                dsobj.metadata['preview'])
-                    preview_path = self._instance_path + 'preview_id_' + \
-                            object_id
-                    preview_file = open(preview_path, 'w')
-                    preview_file.write(preview)
-                    preview_file.close()
-                if 'mime_type' in dsobj.metadata:
-                    mime_type_path = self._instance_path + 'mime_type_id_' + \
-                            object_id
-                    mime_type_file = open(mime_type_path, 'w')
-                    mime_type_file.write(dsobj.metadata['title'])
-                    mime_type_file.close()
-
             else:
                 logging.debug('dsobj has no metadata')
 
-            # create a link to be read from the web server
-            file_path = self._instance_path + 'id_' + object_id
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-            os.link(dsobj.file_path, file_path)
+            utils.package_ds_object(dsobj, self._instance_path)
 
             results.append({'title': title, 'desc': desc, 'comment': comment,
                     'id': object_id})

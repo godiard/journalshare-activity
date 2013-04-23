@@ -18,7 +18,7 @@ import logging
 import os
 import tempfile
 import shutil
-import json
+import utils
 
 from gi.repository import Gtk
 
@@ -55,24 +55,8 @@ class FilePicker(ObjectChooser):
                 if jobject and jobject.file_path:
                     tmp_dir = tempfile.mkdtemp(prefix='', \
                             dir=os.path.join(get_activity_root(), 'tmp'))
-                    _file = os.path.join(tmp_dir, _basename_strip(jobject))
 
-                    os.rename(jobject.file_path, _file)
-
-                    # create a file with the preview...
-                    _preview_file = open(os.path.join(tmp_dir, 'preview'), 'w')
-                    _preview_file.write(jobject.metadata['preview'])
-                    _preview_file.close()
-
-                    # and another with the metadata
-                    _metadata_file = open(os.path.join(tmp_dir, 'metadata'),
-                                          'w')
-                    metadata = {}
-                    for key in jobject.metadata.keys():
-                        if key not in ('object_id', 'preview', 'progress'):
-                            metadata[key] = jobject.metadata[key]
-                    _metadata_file.write(json.dumps(metadata))
-                    _metadata_file.close()
+                    _file = utils.package_ds_object(jobject, tmp_dir)
 
                     global _temp_dirs_to_clean
                     _temp_dirs_to_clean.append(tmp_dir)

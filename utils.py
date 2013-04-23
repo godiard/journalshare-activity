@@ -16,67 +16,75 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 import os
-
-from sugar import profile
-from sugar.datastore import datastore
-
-tfile = open('templates', 'r')
-templates = tfile.read()
-tfile.close()
-
-webdir = os.path.join(os.path.dirname(__file__), 'web')
-
-INDEX = open(os.path.join(webdir, 'index.html'), 'w')
-ICONS_DIR = os.path.join(webdir, 'images')
-FILES_DIR = os.path.join(webdir, 'files')
+import base64
+import json
+import dbus
+from zipfile import ZipFile
 
 
-def fill_out_template(template, content):
-    template = templates.split('#!%s\n' % template)[1].split('\n!#')[0]
-    for x in list(content.keys()):
-        template = template.replace('{%s}' % x, content[x])
+def package_ds_object(dsobj, destination_path):
+    """
+    Creates a zipped file with the file associated to a journal object,
+    the preview and the metadata
+    """
+    object_id = dsobj.object_id
+    preview_path = None
 
-    return template
+    if 'preview' in dsobj.metadata:
+        # TODO: copied from expandedentry.py
+        # is needed because record is saving the preview encoded
+        if dsobj.metadata['preview'][1:4] == 'PNG':
+            preview = dsobj.metadata['preview']
+        else:
+            # TODO: We are close to be able to drop this.
+            preview = base64.b64decode(dsobj.metadata['preview'])
+
+        preview_path = os.path.join(destination_path,
+                                    'preview_id_' + object_id)
+        preview_file = open(preview_path, 'w')
+        preview_file.write(preview)
+        preview_file.close()
+
+    # create file with the metadata
+    metadata_path = os.path.join(destination_path,
+                                 'metadata_id_' + object_id)
+    metadata_file = open(metadata_path, 'w')
+    metadata = {}
+    for key in dsobj.metadata.keys():
+        if key not in ('object_id', 'preview', 'progress'):
+            metadata[key] = dsobj.metadata[key]
+    metadata_file.write(json.dumps(metadata))
+    metadata_file.close()
+
+    # create a zip fileincluding metadata and preview
+    # to be read from the web server
+    file_path = os.path.join(destination_path, 'id_' + object_id + '.journal')
+
+    with ZipFile(file_path, 'w') as myzip:
+        if preview_path is not None:
+            myzip.write(preview_path, 'preview')
+        myzip.write(metadata_path, 'metadata')
+        myzip.write(dsobj.file_path, 'data')
+    return file_path
 
 
-def find_icon(mime_type):
-    generic_name = mime_type.split('/')[0]
-    if generic_name + '.png' in os.listdir(ICONS_DIR):
-        return '%s.png' % generic_name
+def unpackage_ds_object(origin_path, dsobj=None):
+    """
+    Receive a path of a zipped file, unzip it, and save the data,
+    preview and metadata on a journal object
+    """
+    tmp_path = os.path.dirname(origin_path)
+    with ZipFile(origin_path) as zipped:
+        metadata = json.loads(zipped.read('metadata'))
+        preview_data = zipped.read('preview')
+        zipped.extract('data', tmp_path)
 
+    if dsobj is not None:
+        for key in metadata.keys():
+            dsobj.metadata[key] = metadata[key]
+
+        dsobj.metadata['preview'] = dbus.ByteArray(preview_data)
+
+        dsobj.file_path = os.path.join(tmp_path, 'data')
     else:
-        return 'unknown.png'
-
-
-def link_file(file_path):
-    link_path = os.path.join(FILES_DIR, os.path.split(file_path)[-1])
-    os.link(file_path, link_path)
-    return os.path.split(link_path)[-1]
-
-
-def build_journal_page():
-    for f in os.listdir(FILES_DIR):
-        os.remove(os.path.join(FILES_DIR, f))
-
-    objects_starred, no = datastore.find({'keep': '1'})
-    objects = []
-
-    for dsobj in objects_starred:
-        title = dsobj.metadata['title']
-        icon = find_icon(dsobj.metadata['mime_type'])
-        file_link = link_file(dsobj.file_path)
-        objects.append({'file': file_link, 'name': title, 'icon': icon})
-
-    objects_html = ''
-    for o in objects:
-        objects_html += '%s' % fill_out_template('object', o)
-
-    index_html = fill_out_template('index', {'nick': profile.get_nick_name(),
-                                             'objects': objects_html})
-
-    INDEX.write(index_html)
-    INDEX.flush()
-
-
-if __name__ == "__main__":
-    build_journal_page()
+        return metadata, preview_data, os.path.join(tmp_path, 'data')
