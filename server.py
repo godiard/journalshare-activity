@@ -56,7 +56,7 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
             file_content = query.get('journal_item')[0]
             # save to the journal
             zipped_file_path = os.path.join(self.activity_root,
-                    'instance', 'received.journal')
+                                            'instance', 'received.journal')
             f = open(zipped_file_path, 'wb')
             try:
                 f.write(file_content)
@@ -64,12 +64,12 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
                 f.close()
 
             metadata, preview_data, file_path = \
-                    utils.unpackage_ds_object(zipped_file_path, None)
+                utils.unpackage_ds_object(zipped_file_path, None)
 
             logging.error('METADATA %s', metadata)
 
-            GLib.idle_add(self.jm.create_object, file_path,
-                             metadata, preview_data)
+            GLib.idle_add(self.jm.create_object, file_path, metadata,
+                          preview_data)
 
             #redirect to index.html page
             self.send_response(301)
@@ -117,7 +117,7 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-type", mime_type)
         if file_name is not None:
             self.send_header("Content-Disposition",
-                    "inline; filename='%s'" % file_name)
+                             "inline; filename='%s'" % file_name)
         self.end_headers()
 
 
@@ -160,7 +160,8 @@ class JournalHTTPServer(BaseHTTPServer.HTTPServer):
 def run_server(activity_path, activity_root, jm, port):
     # init the journal manager before start the thread
     from threading import Thread
-    httpd = JournalHTTPServer(("", port),
+    httpd = JournalHTTPServer(
+        ("", port),
         lambda *args: JournalHTTPRequestHandler(activity_path, activity_root,
                                                 jm, *args))
     server = Thread(target=httpd.serve_forever)

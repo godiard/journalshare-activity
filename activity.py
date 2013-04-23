@@ -105,7 +105,7 @@ class JournalShare(activity.Activity):
 
         self.view = WebKit.WebView()
         self.view.connect('mime-type-policy-decision-requested',
-                     self.__mime_type_policy_cb)
+                          self.__mime_type_policy_cb)
         self.view.connect('download-requested', self.__download_requested_cb)
 
         try:
@@ -115,7 +115,7 @@ class JournalShare(activity.Activity):
             pass
 
         self.view.load_html_string('<html><body>Loading...</body></html>',
-                'file:///')
+                                   'file:///')
 
         self.view.show()
         scrolled = Gtk.ScrolledWindow()
@@ -137,7 +137,7 @@ class JournalShare(activity.Activity):
                 self.connect("joined", self._joined_cb)
         else:
             self.view.load_uri('http://0.0.0.0:%d/web/index.html' %
-                    self.port)
+                               self.port)
             # if I am the server
             self._inhibit_suspend()
 
@@ -154,7 +154,7 @@ class JournalShare(activity.Activity):
             result = chooser.run()
             if result == Gtk.ResponseType.ACCEPT:
                 logging.debug('ObjectChooser: %r',
-                        chooser.get_selected_object())
+                              chooser.get_selected_object())
                 jobject = chooser.get_selected_object()
                 if jobject and jobject.file_path:
                     self._shared_items.append(jobject.object_id)
@@ -190,10 +190,11 @@ class JournalShare(activity.Activity):
     def _set_view_url(self, tube_id):
         chan = self.shared_activity.telepathy_tubes_chan
         iface = chan[telepathy.CHANNEL_TYPE_TUBES]
-        addr = iface.AcceptStreamTube(tube_id,
-                telepathy.SOCKET_ADDRESS_TYPE_IPV4,
-                telepathy.SOCKET_ACCESS_CONTROL_LOCALHOST, 0,
-                utf8_strings=True)
+        addr = iface.AcceptStreamTube(
+            tube_id,
+            telepathy.SOCKET_ADDRESS_TYPE_IPV4,
+            telepathy.SOCKET_ACCESS_CONTROL_LOCALHOST, 0,
+            utf8_strings=True)
         logging.error('Accepted stream tube: listening address is %r', addr)
         # SOCKET_ADDRESS_TYPE_IPV4 is defined to have addresses of type '(sq)'
         assert isinstance(addr, dbus.Struct)
@@ -213,10 +214,10 @@ class JournalShare(activity.Activity):
         chan = self.shared_activity.telepathy_tubes_chan
         iface = chan[telepathy.CHANNEL_TYPE_TUBES]
         self._fileserver_tube_id = iface.OfferStreamTube(
-                JOURNAL_STREAM_SERVICE, {},
-                telepathy.SOCKET_ADDRESS_TYPE_IPV4,
-                ('127.0.0.1', dbus.UInt16(self.port)),
-                telepathy.SOCKET_ACCESS_CONTROL_LOCALHOST, 0)
+            JOURNAL_STREAM_SERVICE, {},
+            telepathy.SOCKET_ADDRESS_TYPE_IPV4,
+            ('127.0.0.1', dbus.UInt16(self.port)),
+            telepathy.SOCKET_ACCESS_CONTROL_LOCALHOST, 0)
 
     def watch_for_tubes(self):
         """Watch for new tubes."""
@@ -226,8 +227,8 @@ class JournalShare(activity.Activity):
 
         tubes_chan = self.shared_activity.telepathy_tubes_chan
 
-        tubes_chan[telepathy.CHANNEL_TYPE_TUBES].connect_to_signal('NewTube',
-            self._new_tube_cb)
+        tubes_chan[telepathy.CHANNEL_TYPE_TUBES].connect_to_signal(
+            'NewTube', self._new_tube_cb)
         tubes_chan[telepathy.CHANNEL_TYPE_TUBES].ListTubes(
             reply_handler=self._list_tubes_reply_cb,
             error_handler=self._list_tubes_error_cb)
@@ -398,7 +399,7 @@ class JournalManager(GObject.GObject):
 
         if preview_content is not None and preview_content != '':
             new_dsobject.metadata['preview'] = \
-                    dbus.ByteArray(preview_content)
+                dbus.ByteArray(preview_content)
         datastore.write(new_dsobject)
         if self._shared_items == ['*']:
             # mark as favorite
@@ -441,6 +442,6 @@ class JournalManager(GObject.GObject):
             utils.package_ds_object(dsobj, self._instance_path)
 
             results.append({'title': title, 'desc': desc, 'comment': comment,
-                    'id': object_id})
+                           'id': object_id})
         logging.error(results)
         return json.dumps(results)
