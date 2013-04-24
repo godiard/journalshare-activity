@@ -72,9 +72,10 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
                           preview_data)
 
             #redirect to index.html page
-            self.send_response(301)
-            self.send_header('Location', '/web/index.html')
-            self.end_headers()
+            self.send_header_response("text/html")
+
+            self.send_file(os.path.join(self.activity_path,
+                                        'web/reload_index.html'))
 
     def do_GET(self):
         """Respond to a GET request."""
@@ -89,11 +90,7 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
                 file_path = self.activity_path + self.path
 
                 if os.path.isfile(file_path):
-                    logging.error('Opening requested file %s', file_path)
-                    f = open(file_path)
-                    content = f.read()
-                    f.close()
-                    self.wfile.write(content)
+                    self.send_file(file_path)
 
             if self.path.startswith('/datastore'):
                 # return files requested in the activity instance directory
@@ -106,11 +103,14 @@ class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_header_response(mime_type)
 
                 if os.path.isfile(file_path):
-                    logging.error('Opening requested file %s', file_path)
-                    f = open(file_path)
-                    content = f.read()
-                    f.close()
-                    self.wfile.write(content)
+                    self.send_file(file_path)
+
+    def send_file(self, file_path):
+        logging.error('Opening requested file %s', file_path)
+        f = open(file_path)
+        content = f.read()
+        f.close()
+        self.wfile.write(content)
 
     def send_header_response(self, mime_type, file_name=None):
         self.send_response(200)
