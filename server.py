@@ -16,156 +16,75 @@
 
 import os
 import logging
-import cgi
 
-import BaseHTTPServer
-from SimpleHTTPServer import SimpleHTTPRequestHandler
-import SocketServer
-import select
+from tornado import httpserver
+from tornado import ioloop
+from tornado import web
 
 from gi.repository import GLib
 
 import utils
 
 
-class JournalHTTPRequestHandler(SimpleHTTPRequestHandler):
-    """HTTP Request Handler to send data to the webview.
+class UploaderHandler(web.RequestHandler):
 
-    RequestHandler class that integrates with Glib mainloop. It writes
-    the specified file to the client in chunks, returning control to the
-    mainloop between chunks.
+    def initialize(self, instance_path, static_path, journal_manager):
+        self.instance_path = instance_path
+        self.static_path = static_path
+        self.jm = journal_manager
 
-    """
+    def post(self):
+        journal_item = self.request.files['journal_item'][0]
 
-    def __init__(self, activity_path, activity_root, jm, request,
-                 client_address, server):
-        self.activity_path = activity_path
-        self.activity_root = activity_root
-        self.jm = jm
-        SimpleHTTPRequestHandler.__init__(self, request, client_address,
-                                          server)
+        # save to the journal
+        zipped_file_path = os.path.join(self.instance_path, 'received.journal')
+        f = open(zipped_file_path, 'wb')
+        try:
+            f.write(journal_item['body'])
+        finally:
+            f.close()
 
-    def do_POST(self):
-        if self.path == '/datastore/upload':
-            ctype = self.headers.get('content-type')
-            if not ctype:
-                return None
-            ctype, pdict = cgi.parse_header(ctype)
-            query = cgi.parse_multipart(self.rfile, pdict)
+        metadata, preview_data, file_path = \
+            utils.unpackage_ds_object(zipped_file_path, None)
 
-            file_content = query.get('journal_item')[0]
-            # save to the journal
-            zipped_file_path = os.path.join(self.activity_root,
-                                            'instance', 'received.journal')
-            f = open(zipped_file_path, 'wb')
-            try:
-                f.write(file_content)
-            finally:
-                f.close()
+        logging.error('METADATA %s', metadata)
 
-            metadata, preview_data, file_path = \
-                utils.unpackage_ds_object(zipped_file_path, None)
+        GLib.idle_add(self.jm.create_object, file_path, metadata,
+                      preview_data)
 
-            logging.error('METADATA %s', metadata)
-
-            GLib.idle_add(self.jm.create_object, file_path, metadata,
-                          preview_data)
-
-            #redirect to index.html page
-            self.send_header_response("text/html")
-
-            self.send_file(os.path.join(self.activity_path,
-                                        'web/reload_index.html'))
-
-    def do_GET(self):
-        """Respond to a GET request."""
-        #logging.error('inside do_get dir(self) %s', dir(self))
-
-        if self.path:
-            logging.error('Requested path %s', self.path)
-            if self.path.startswith('/web'):
-                # TODO: check mime_type
-                self.send_header_response("text/html")
-                # return files requested in the web directory
-                file_path = self.activity_path + self.path
-
-                if os.path.isfile(file_path):
-                    self.send_file(file_path)
-
-            if self.path.startswith('/datastore'):
-                # return files requested in the activity instance directory
-                path = self.path.replace('datastore', 'instance')
-                file_path = self.activity_root + path
-
-                mime_type = 'text/html'
-                if file_path.endswith('.journal'):
-                    mime_type = 'application/journal'
-                self.send_header_response(mime_type)
-
-                if os.path.isfile(file_path):
-                    self.send_file(file_path)
-
-    def send_file(self, file_path):
-        logging.error('Opening requested file %s', file_path)
-        f = open(file_path)
-        content = f.read()
+        #redirect to index.html page
+        f = open(os.path.join(self.static_path, 'reload_index.html'))
+        self.write(f.read())
         f.close()
-        self.wfile.write(content)
-
-    def send_header_response(self, mime_type, file_name=None):
-        self.send_response(200)
-        self.send_header("Content-type", mime_type)
-        if file_name is not None:
-            self.send_header("Content-Disposition",
-                             "inline; filename='%s'" % file_name)
-        self.end_headers()
+        self.flush()
 
 
-class JournalHTTPServer(BaseHTTPServer.HTTPServer):
-    """HTTP Server for transferring document while collaborating."""
+class DatastoreHandler(web.StaticFileHandler):
 
-    # from wikipedia activity
-    def serve_forever(self, poll_interval=0.5):
-        """Overridden version of BaseServer.serve_forever that does not fail
-        to work when EINTR is received.
-        """
-        self._BaseServer__serving = True
-        self._BaseServer__is_shut_down.clear()
-        while self._BaseServer__serving:
-
-            # XXX: Consider using another file descriptor or
-            # connecting to the socket to wake this up instead of
-            # polling. Polling reduces our responsiveness to a
-            # shutdown request and wastes cpu at all other times.
-            try:
-                r, w, e = select.select([self], [], [], poll_interval)
-            except select.error, e:
-                if e[0] == errno.EINTR:
-                    logging.debug("got eintr")
-                    continue
-                raise
-            if r:
-                self._handle_request_noblock()
-        self._BaseServer__is_shut_down.set()
-
-    def server_bind(self):
-        """Override server_bind in HTTPServer to not use
-        getfqdn to get the server name because is very slow."""
-        SocketServer.TCPServer.server_bind(self)
-        host, port = self.socket.getsockname()[:2]
-        self.server_name = 'localhost'
-        self.server_port = port
+    def set_extra_headers(self, path):
+        """For subclass to add extra headers to the response"""
+        self.set_header("Content-Type", 'application/journal')
 
 
 def run_server(activity_path, activity_root, jm, port):
-    # init the journal manager before start the thread
+
     from threading import Thread
-    httpd = JournalHTTPServer(
-        ("", port),
-        lambda *args: JournalHTTPRequestHandler(activity_path, activity_root,
-                                                jm, *args))
-    server = Thread(target=httpd.serve_forever)
-    server.setDaemon(True)
-    logging.debug("Before start server")
-    server.start()
-    logging.debug("After start server")
+    io_loop = ioloop.IOLoop.instance()
+
+    static_path = os.path.join(activity_path, 'web')
+    instance_path = os.path.join(activity_root, 'instance')
+
+    application = web.Application(
+        [
+            (r"/web/(.*)", web.StaticFileHandler, {"path": static_path}),
+            (r"/datastore/(.*)", DatastoreHandler, {"path": instance_path}),
+            (r"/upload", UploaderHandler, {"instance_path": instance_path,
+                                           "static_path": static_path,
+                                           "journal_manager": jm
+                                           })
+        ])
+    http_server = httpserver.HTTPServer(application)
+    http_server.listen(port)
+    tornado_looop = Thread(target=io_loop.start)
+    tornado_looop.setDaemon(True)
+    tornado_looop.start()
