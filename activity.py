@@ -53,16 +53,15 @@ class JournalShare(activity.Activity):
 
     def __init__(self, handle):
 
+        self._fileserver_tube_id = -1
         activity.Activity.__init__(self, handle)
 
         # a list with the object_id of the shared items.
         # if is a only element == '*' means all the favorite items
         # are selected
-        self._shared_items = []
         self._activity_path = activity.get_bundle_path()
         self._activity_root = activity.get_activity_root()
-        self._jm = JournalManager(self._activity_root, self._shared_items)
-        self._jm.connect('updated', self.__journal_manager_updated_cb)
+        self._jm = JournalManager(self._activity_root)
 
         self.server_proc = None
         self.port = 2500
@@ -157,23 +156,13 @@ class JournalShare(activity.Activity):
                               chooser.get_selected_object())
                 jobject = chooser.get_selected_object()
                 if jobject and jobject.file_path:
-                    self._shared_items.append(jobject.object_id)
-                    self._update_shared_items()
+                    self._jm.append_to_shared_items(jobject.object_id)
         finally:
             chooser.destroy()
             del chooser
 
     def __add_favorites_clicked_cb(self, button):
-        self._shared_items = ['*']
-        self._update_shared_items()
-
-    def _update_shared_items(self):
-        self._jm.set_shared_items(self._shared_items)
-        self.view.reload()
-
-    def __journal_manager_updated_cb(self, jm):
-        self._shared_items = jm.get_shared_items()
-        self._update_shared_items()
+        self._jm.set_shared_items(['*'])
 
     def _get_view_information(self):
         # Pick an arbitrary tube we can try to connect to the server
@@ -239,6 +228,10 @@ class JournalShare(activity.Activity):
         logging.error('New tube: ID=%d initator=%d type=%d service=%s '
                       'params=%r state=%d', tube_id, initiator, tube_type,
                       service, params, state)
+        if self._fileserver_tube_id == tube_id:
+            logging.error('This is my tube!... Quit')
+            return
+
         if service == JOURNAL_STREAM_SERVICE:
             logging.error('I could download from that tube')
             self.unused_download_tubes.add(tube_id)
@@ -296,12 +289,11 @@ class JournalShare(activity.Activity):
         # but later we can add more info
         state = json.loads(json_data)
         if 'shared_items' in state:
-            self._shared_items = state['shared_items']
-        self._update_shared_items()
+            self._jm.set_shared_items(state['shared_items'])
 
     def write_file(self, file_path):
         state = {}
-        state['shared_items'] = self._shared_items
+        state['shared_items'] = self._jm.get_shared_items()
         f = open(file_path, 'w')
         f.write(json.dumps(state))
         f.close()
@@ -345,10 +337,10 @@ class JournalManager(GObject.GObject):
 
     __gsignals__ = {'updated': (GObject.SignalFlags.RUN_FIRST, None, ([]))}
 
-    def __init__(self, activity_root, shared_items):
+    def __init__(self, activity_root):
         GObject.GObject.__init__(self)
         self._instance_path = activity_root + '/instance/'
-        self._shared_items = shared_items
+        self._shared_items = []
         try:
             self.nick_name = profile.get_nick_name()
         except:
@@ -366,20 +358,26 @@ class JournalManager(GObject.GObject):
         owner_info_file.write(self.get_journal_owner_info())
         owner_info_file.close()
 
-        selected_file_path = self._instance_path + 'selected.json'
-        selected_file = open(selected_file_path, 'w')
-        selected_file.write(self._prepare_shared_items())
-        selected_file.close()
+        self._update_temporary_files()
 
     def set_shared_items(self, shared_items):
         self._shared_items = shared_items
-        selected_file_path = self._instance_path + 'selected.json'
+        self._update_temporary_files()
+
+    def _update_temporary_files(self):
+        selected_file_path = os.path.join(self._instance_path,
+                                          'selected.json')
         selected_file = open(selected_file_path, 'w')
         selected_file.write(self._prepare_shared_items())
         selected_file.close()
+        self.emit('updated')
 
     def get_shared_items(self):
         return self._shared_items
+
+    def append_to_shared_items(self, item):
+        self._shared_items.append(item)
+        self._update_temporary_files()
 
     def get_journal_owner_info(self):
         info = {}
@@ -404,9 +402,9 @@ class JournalManager(GObject.GObject):
         if self._shared_items == ['*']:
             # mark as favorite
             new_dsobject.metadata['keep'] = '1'
+            self._update_temporary_files()
         else:
-            self._shared_items.append(new_dsobject.object_id)
-        self.emit('updated')
+            self.append_to_shared_items(new_dsobject.object_id)
         return False
 
     def _prepare_shared_items(self):
@@ -441,7 +439,7 @@ class JournalManager(GObject.GObject):
 
             utils.package_ds_object(dsobj, self._instance_path)
 
-            results.append({'title': title, 'desc': desc, 'comment': comment,
-                           'id': object_id})
+            results.append({'title': str(title), 'desc': str(desc),
+                            'comment': comment, 'id': str(object_id)})
         logging.error(results)
         return json.dumps(results)

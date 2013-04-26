@@ -6,6 +6,24 @@
     <script src="jquery-1.9.1.min.js" type="text/javascript"></script>
     <script type="text/javascript">
 
+        local = (window.location.hostname == '0.0.0.0');
+
+        function add_tr(id, title, desc) {
+            $('#journaltable').append("<tr id=" + id + ">" +
+                "<td><img src='/datastore/preview_id_" + id + "?v=x'></td>"+
+                "<td class='desc_td'>"+
+                "<table class='desc_table'>"+
+                "<tr><td class='title'>" + title + "</td></tr>"+
+                "<tr><td>" + desc + "</td></tr>"+
+                (!local ? "<tr><td>"+
+                "<a class='download_link' href='/datastore/id_" + id +".journal'>"+
+                "Download</a></td></tr>" : "") +
+                "</table>"+
+                "</td>" +
+            "</tr>");
+
+        }
+
         function init() {
             $.getJSON("/datastore/owner_info.json", function(owner_info) {
                 $('#header').append("Journal of " + owner_info.nick_name);
@@ -13,37 +31,44 @@
                 $('#header').css('background-color', owner_info.fill_color);
             });
 
-            local = (window.location.hostname == '0.0.0.0');
 
             if (local) {
                 $('#uploadarea').hide();
             }
 
             $.getJSON("/datastore/selected.json", function(selected) {
-                for (var i = 0; i < selected.length; i++)
-                {
-                    $('#journaltable').append("<tr>" +
-                        "<td><img src='/datastore/preview_id_" + selected[i].id + "?v=x'></td>"+
-                        "<td class='desc_td'>"+
-                        "<table class='desc_table'>"+
-                        "<tr><td class='title'>" + selected[i].title + "</td></tr>"+
-                        "<tr><td>" + selected[i].desc + "</td></tr>"+
-                        (!local ? "<tr><td>"+
-                        "<a class='download_link' href='/datastore/id_" + selected[i].id +".journal'>"+
-                        "Download</a></td></tr>" : "") +
-                        "</table>"+
-                        "</td>" +
-                    "</tr>");
+                for (var i = 0; i < selected.length; i++) {
+                    id = selected[i].id;
+                    add_tr(id, selected[i].title, selected[i].desc);
                 }
 
                 if (selected.length == 0) {
-                    $('#journaltable').append("<tr>" +
+                    $('#journaltable').append("<tr id='noelements'>" +
                         "<td class='error_msg'>No item selected, " +
                         "add items to share from your Journal." +
                         "</td></tr>");
                 }
             });
+
         }
+
+
+        // test websockets
+        websocket_url = "ws://" + window.location.hostname + ":" +
+                window.location.port + "/websocket";
+        var ws = new WebSocket(websocket_url);
+
+        ws.onmessage = function (evt) {
+            $('#noelements').hide();
+            new_list = eval(evt.data);
+            for (var i = 0; i < new_list.length; i++) {
+                id = new_list[i].id;
+                if ($('#' + id).length == 0) {
+                    add_tr(id, new_list[i].title, new_list[i].desc);
+                }
+            }
+        };
+
     </script>
   </head>
   <body onload="init()">

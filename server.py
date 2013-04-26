@@ -20,6 +20,7 @@ import logging
 from tornado import httpserver
 from tornado import ioloop
 from tornado import web
+from tornado import websocket
 
 from gi.repository import GLib
 
@@ -66,6 +67,35 @@ class DatastoreHandler(web.StaticFileHandler):
         self.set_header("Content-Type", 'application/journal')
 
 
+class JournalWebSocketHandler(websocket.WebSocketHandler):
+
+    def initialize(self, instance_path, journal_manager):
+        self._instance_path = instance_path
+        self._jm = journal_manager
+        self._jm.connect('updated', self.__journal_manager_updated_cb)
+
+    def __journal_manager_updated_cb(self, jm):
+        logging.error('ON JournalWebSocketHandler jm updated')
+        try:
+            f = open(os.path.join(self._instance_path, 'selected.json'))
+            logging.error(os.path.join(self._instance_path, 'selected.json'))
+            json = f.read()
+            f.close()
+            logging.error(json)
+            self.write_message(json)
+        except:
+        logging.error('Exception sending websocket msg')
+
+    def open(self):
+        logging.error("WebSocket opened")
+
+    def on_message(self, message):
+        self.write_message(u"You said: " + message)
+
+    def on_close(self):
+        logging.error("WebSocket closed")
+
+
 def run_server(activity_path, activity_root, jm, port):
 
     from threading import Thread
@@ -78,6 +108,8 @@ def run_server(activity_path, activity_root, jm, port):
         [
             (r"/web/(.*)", web.StaticFileHandler, {"path": static_path}),
             (r"/datastore/(.*)", DatastoreHandler, {"path": instance_path}),
+            (r"/websocket", JournalWebSocketHandler,
+                {"instance_path": instance_path, "journal_manager": jm}),
             (r"/upload", UploaderHandler, {"instance_path": instance_path,
                                            "static_path": static_path,
                                            "journal_manager": jm
@@ -88,3 +120,4 @@ def run_server(activity_path, activity_root, jm, port):
     tornado_looop = Thread(target=io_loop.start)
     tornado_looop.setDaemon(True)
     tornado_looop.start()
+    logging.error('SERVER STARTED')
