@@ -84,7 +84,7 @@ class JournalWebSocketHandler(websocket.WebSocketHandler):
             logging.error(json)
             self.write_message(json)
         except:
-        logging.error('Exception sending websocket msg')
+            logging.error('Exception sending websocket msg')
 
     def open(self):
         logging.error("WebSocket opened")
