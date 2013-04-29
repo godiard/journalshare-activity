@@ -26,6 +26,7 @@ import telepathy
 import dbus
 import os.path
 import json
+import socket
 
 from sugar3.activity import activity
 from sugar3.activity.widgets import ActivityToolbarButton
@@ -64,8 +65,16 @@ class JournalShare(activity.Activity):
         self._jm = JournalManager(self._activity_root)
 
         self.server_proc = None
-        self.port = 2500
+
         if not self.shared_activity:
+            # Get a free socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+            sock.bind(('', 0))
+            sock.listen(socket.SOMAXCONN)
+            _ipaddr, self.port = sock.getsockname()
+            sock.shutdown(socket.SHUT_RDWR)
+            logging.error('Using port %d', self.port)
+
             #TODO: check available port
             server.run_server(self._activity_path, self._activity_root,
                               self._jm, self.port)
