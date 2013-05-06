@@ -25,6 +25,8 @@ from tornado import websocket
 from gi.repository import GLib
 
 import utils
+import tempfile
+import base64
 
 
 class UploaderHandler(web.RequestHandler):
@@ -96,6 +98,40 @@ class JournalWebSocketHandler(websocket.WebSocketHandler):
         logging.error("WebSocket closed")
 
 
+class WebSocketUploadHandler(websocket.WebSocketHandler):
+
+    def initialize(self, instance_path, journal_manager):
+        self._instance_path = instance_path
+        self._jm = journal_manager
+
+    def open(self):
+        self._tmp_file = tempfile.NamedTemporaryFile(
+            mode='r+', dir=self._instance_path)
+
+    def on_message(self, message):
+        self._tmp_file.write(message)
+        self._tmp_file.flush()
+        self.write_message('NEXT')
+
+    def on_close(self):
+        # save to the journal
+        # decode the file
+        self._decoded_tmp_file = tempfile.NamedTemporaryFile(
+            mode='r+', dir=self._instance_path)
+        self._tmp_file.seek(0)
+        base64.decode(self._tmp_file, self._decoded_tmp_file)
+        self._decoded_tmp_file.flush()
+
+        metadata, preview_data, file_path = \
+            utils.unpackage_ds_object(self._decoded_tmp_file.name, None)
+        logging.error('METADATA %s', metadata)
+
+        GLib.idle_add(self._jm.create_object, file_path, metadata,
+                      preview_data)
+        self._tmp_file.close()
+        self._decoded_tmp_file.close()
+
+
 def run_server(activity_path, activity_root, jm, port):
 
     from threading import Thread
@@ -109,6 +145,8 @@ def run_server(activity_path, activity_root, jm, port):
             (r"/web/(.*)", web.StaticFileHandler, {"path": static_path}),
             (r"/datastore/(.*)", DatastoreHandler, {"path": instance_path}),
             (r"/websocket", JournalWebSocketHandler,
+                {"instance_path": instance_path, "journal_manager": jm}),
+            (r"/websocket/upload", WebSocketUploadHandler,
                 {"instance_path": instance_path, "journal_manager": jm}),
             (r"/upload", UploaderHandler, {"instance_path": instance_path,
                                            "static_path": static_path,

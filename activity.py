@@ -20,6 +20,7 @@ from gettext import gettext as _
 from gi.repository import GObject
 GObject.threads_init()
 from gi.repository import Gtk
+from gi.repository import Gdk
 from gi.repository import WebKit
 
 import telepathy
@@ -64,7 +65,9 @@ class JournalShare(activity.Activity):
         self._activity_root = activity.get_activity_root()
         self._jm = JournalManager(self._activity_root)
 
-        self.server_proc = None
+        # master is the activity in the activity who started the communication
+        self._master = False
+        self._ip = '0.0.0.0'
 
         if not self.shared_activity:
             # Get a free socket
@@ -78,6 +81,7 @@ class JournalShare(activity.Activity):
             #TODO: check available port
             server.run_server(self._activity_path, self._activity_root,
                               self._jm, self.port)
+            self._master = True
 
         toolbar_box = ToolbarBox()
 
@@ -91,12 +95,13 @@ class JournalShare(activity.Activity):
         add_button.connect('clicked', self.__add_clicked_cb)
         toolbar_box.toolbar.insert(add_button, -1)
 
-        add_favorites_button = ToolButton('emblem-favorite')
-        add_favorites_button.set_tooltip(_('Add favorite items to share'))
-        add_favorites_button.show()
-        add_favorites_button.connect('clicked',
-                                     self.__add_favorites_clicked_cb)
-        toolbar_box.toolbar.insert(add_favorites_button, -1)
+        if self._master:
+            add_favorites_button = ToolButton('emblem-favorite')
+            add_favorites_button.set_tooltip(_('Add favorite items to share'))
+            add_favorites_button.show()
+            add_favorites_button.connect('clicked',
+                                         self.__add_favorites_clicked_cb)
+            toolbar_box.toolbar.insert(add_favorites_button, -1)
 
         separator = Gtk.SeparatorToolItem()
         separator.props.draw = False
@@ -165,10 +170,27 @@ class JournalShare(activity.Activity):
                               chooser.get_selected_object())
                 jobject = chooser.get_selected_object()
                 if jobject and jobject.file_path:
-                    self._jm.append_to_shared_items(jobject.object_id)
+                    if self._master:
+                        self._jm.append_to_shared_items(jobject.object_id)
+                    else:
+                        tmp_path = os.path.join(self._activity_root,
+                                                'instance')
+                        logging.error('temp_path %s', tmp_path)
+                        packaged_file_path = utils.package_ds_object(
+                            jobject, tmp_path)
+                        url = 'ws://%s:%d/websocket/upload' % (self._ip,
+                                                               self.port)
+                        uploader = utils.Uploader(packaged_file_path, url)
+                        uploader.connect('uploaded', self.__uploaded_cb)
+                        cursor = Gdk.Cursor.new(Gdk.CursorType.WATCH)
+                        self.get_window().set_cursor(cursor)
+                        uploader.start()
         finally:
             chooser.destroy()
             del chooser
+
+    def __uploaded_cb(self, uploader):
+        self.get_window().set_cursor(None)
 
     def __add_favorites_clicked_cb(self, button):
         self._jm.set_shared_items(['*'])
@@ -200,9 +222,11 @@ class JournalShare(activity.Activity):
         assert isinstance(addr[0], str)
         assert isinstance(addr[1], (int, long))
         assert addr[1] > 0 and addr[1] < 65536
-        port = int(addr[1])
+        self._ip = addr[0]
+        self.port = int(addr[1])
 
-        self.view.load_uri('http://%s:%d/web/index.html' % (addr[0], port))
+        self.view.load_uri('http://%s:%d/web/index.html' %
+                           (self._ip, self.port))
         return False
 
     def _start_sharing(self):
@@ -219,7 +243,7 @@ class JournalShare(activity.Activity):
 
     def watch_for_tubes(self):
         """Watch for new tubes."""
-        if self.server_proc is not None:
+        if self._master:
             # I am sharing, then, don't try to connect to the tubes
             return
 
@@ -308,8 +332,6 @@ class JournalShare(activity.Activity):
         f.close()
 
     def can_close(self):
-        if self.server_proc is not None:
-            self.server_proc.kill()
         self._allow_suspend()
         # remove temporary files
         instance_path = self._activity_root + '/instance/'

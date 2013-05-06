@@ -31,11 +31,6 @@
                 $('#header').css('background-color', owner_info.fill_color);
             });
 
-
-            if (local) {
-                $('#uploadarea').hide();
-            }
-
             $.getJSON("/datastore/selected.json", function(selected) {
                 for (var i = 0; i < selected.length; i++) {
                     id = selected[i].id;
@@ -73,18 +68,6 @@
   </head>
   <body onload="init()">
       <div id="header">
-      </div>
-
-      <div id="uploadarea">
-      <table>
-      <tr><td>
-      <form action="/upload" method="post" enctype="multipart/form-data">
-      Add from my Journal:<br>
-      <input type="file" name="journal_item" size="30">
-      <input type="submit" value="Send">
-      </form>
-      </td></tr>
-      </table>
       </div>
 
       <table id="journaltable">

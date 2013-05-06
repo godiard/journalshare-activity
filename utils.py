@@ -15,11 +15,65 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-import os
+from gi.repository import GObject
 import base64
+import os
 import json
 import dbus
 from zipfile import ZipFile
+import logging
+
+import websocket
+import tempfile
+
+CHUNK_SIZE = 2048
+
+
+class Uploader(GObject.GObject):
+
+    __gsignals__ = {'uploaded': (GObject.SignalFlags.RUN_FIRST, None, ([]))}
+
+    def __init__(self, file_path, url):
+        GObject.GObject.__init__(self)
+        logging.error('websocket url %s', url)
+        # base64 encode the file
+        self._file = tempfile.TemporaryFile(mode='r+')
+        base64.encode(open(file_path, 'r'), self._file)
+        self._file.seek(0)
+
+        self._ws = websocket.WebSocketApp(url,
+                                          on_open=self._on_open,
+                                          on_message=self._on_message,
+                                          on_error=self._on_error,
+                                          on_close=self._on_close)
+        self._chunk = str(self._file.read(CHUNK_SIZE))
+
+    def start(self):
+        from threading import Thread
+        upload_looop = Thread(target=self._ws.run_forever)
+        upload_looop.setDaemon(True)
+        upload_looop.start()
+
+    def _on_open(self, ws):
+        if self._chunk != '':
+            self._ws.send(self._chunk)
+        else:
+            self._ws.close()
+
+    def _on_message(self, ws, message):
+        self._chunk = self._file.read(CHUNK_SIZE)
+        if self._chunk != '':
+            self._ws.send(self._chunk)
+        else:
+            self._ws.close()
+
+    def _on_error(self, ws, error):
+        #self._ws.send(self._chunk)
+        pass
+
+    def _on_close(self, ws):
+        self._file.close()
+        GObject.idle_add(self.emit, 'uploaded')
 
 
 def package_ds_object(dsobj, destination_path):
@@ -28,8 +82,10 @@ def package_ds_object(dsobj, destination_path):
     the preview and the metadata
     """
     object_id = dsobj.object_id
+    logging.error('id %s', object_id)
     preview_path = None
 
+    logging.error('before preview')
     if 'preview' in dsobj.metadata:
         # TODO: copied from expandedentry.py
         # is needed because record is saving the preview encoded
@@ -45,6 +101,7 @@ def package_ds_object(dsobj, destination_path):
         preview_file.write(preview)
         preview_file.close()
 
+    logging.error('before metadata')
     # create file with the metadata
     metadata_path = os.path.join(destination_path,
                                  'metadata_id_' + object_id)
@@ -55,6 +112,8 @@ def package_ds_object(dsobj, destination_path):
             metadata[key] = dsobj.metadata[key]
     metadata_file.write(json.dumps(metadata))
     metadata_file.close()
+
+    logging.error('before create zip')
 
     # create a zip fileincluding metadata and preview
     # to be read from the web server
