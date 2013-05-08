@@ -27,6 +27,7 @@ from gi.repository import GLib
 import utils
 import tempfile
 import base64
+import json
 
 
 class DatastoreHandler(web.StaticFileHandler):
@@ -34,6 +35,7 @@ class DatastoreHandler(web.StaticFileHandler):
     def set_extra_headers(self, path):
         """For subclass to add extra headers to the response"""
         self.set_header("Content-Type", 'application/journal')
+        self._path = path
 
 
 class JournalWebSocketHandler(websocket.WebSocketHandler):
@@ -59,7 +61,17 @@ class JournalWebSocketHandler(websocket.WebSocketHandler):
         logging.error("WebSocket opened")
 
     def on_message(self, message):
-        self.write_message(u"You said: " + message)
+        logging.error('RECEIVED MSG: %s', message)
+        message_data = json.loads(message)
+        if message_data['type_message'] == 'DOWNLOADED':
+            message = message_data['message']
+            object_id = message['object_id']
+            name = message['from']
+            icon = message['icon']
+            logging.error('OBJECT %s WAS DOWNLOADED SUCCESSFULLY', object_id)
+            GLib.idle_add(self._jm.add_downloader, object_id, name, icon)
+        else:
+            self.write_message(u"You said: " + message)
 
     def on_close(self):
         logging.error("WebSocket closed")
@@ -90,7 +102,7 @@ class WebSocketUploadHandler(websocket.WebSocketHandler):
         self._decoded_tmp_file.flush()
 
         metadata, preview_data, file_path = \
-            utils.unpackage_ds_object(self._decoded_tmp_file.name, None)
+            utils.unpackage_ds_object(self._decoded_tmp_file.name)
         logging.error('METADATA %s', metadata)
 
         GLib.idle_add(self._jm.create_object, file_path, metadata,

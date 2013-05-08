@@ -8,7 +8,20 @@
 
         local = (window.location.hostname == '0.0.0.0');
 
-        function add_tr(id, title, desc, shared_by) {
+        function add_tr(item) {
+            id = item.id;
+            title = item.title;
+            desc = item.desc;
+            shared_by = item.shared_by;
+            downloaded_by = item.downloaded_by;
+            downloaded_list = '';
+            if (downloaded_by.length > 0) {
+                for (var i = 0; i < downloaded_by.length; i++) {
+                    user_data = downloaded_by[i];
+                    downloaded_list += downloaded_list.concat(user_data.from);
+                }
+            }
+
             $('#journaltable').append("<tr id=" + id + ">" +
                 "<td><img src='/datastore/preview_id_" + id + "?v=x'></td>"+
                 "<td class='desc_td'>"+
@@ -16,7 +29,9 @@
                 "<tr><td class='title'>" + title + "</td></tr>"+
                 (shared_by.from != '' ? "<tr><td>Shared by " + shared_by.from +
                  "</td></tr>" : "") +
-                "<tr><td>" + desc + "</td></tr>"+
+                (desc != '' ? "<tr><td>" + desc + "</td></tr>" : "")+
+                (downloaded_list != '' ? "<tr><td>Downloaded by " + downloaded_list +
+                 "</td></tr>" : "") +
                 (!local ? "<tr><td>"+
                 "<a class='download_link' href='/datastore/id_" + id +".journal'>"+
                 "Download</a></td></tr>" : "") +
@@ -35,9 +50,7 @@
 
             $.getJSON("/datastore/selected.json", function(selected) {
                 for (var i = 0; i < selected.length; i++) {
-                    id = selected[i].id;
-                    add_tr(id, selected[i].title, selected[i].desc,
-                           selected[i].shared_by);
+                    add_tr(selected[i]);
                 }
 
                 if (selected.length == 0) {
@@ -50,7 +63,6 @@
 
         }
 
-
         // test websockets
         websocket_url = "ws://" + window.location.hostname + ":" +
                 window.location.port + "/websocket";
@@ -62,8 +74,7 @@
             for (var i = 0; i < new_list.length; i++) {
                 id = new_list[i].id;
                 if ($('#' + id).length == 0) {
-                    add_tr(id, new_list[i].title, new_list[i].desc,
-                           new_list[i].shared_by);
+                    add_tr(new_list[i]);
                 }
             }
         };

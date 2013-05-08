@@ -22,6 +22,7 @@ import json
 import dbus
 from zipfile import ZipFile
 import logging
+from threading import Thread
 
 import websocket
 import tempfile
@@ -51,7 +52,6 @@ class Uploader(GObject.GObject):
         self._chunk = str(self._file.read(CHUNK_SIZE))
 
     def start(self):
-        from threading import Thread
         upload_looop = Thread(target=self._ws.run_forever)
         upload_looop.setDaemon(True)
         upload_looop.start()
@@ -76,6 +76,35 @@ class Uploader(GObject.GObject):
     def _on_close(self, ws):
         self._file.close()
         GObject.idle_add(self.emit, 'uploaded')
+
+
+class Messanger(GObject.GObject):
+
+    __gsignals__ = {'sent': (GObject.SignalFlags.RUN_FIRST, None, ([str]))}
+
+    def __init__(self, url):
+        GObject.GObject.__init__(self)
+        logging.error('websocket url %s', url)
+        self._ws = websocket.WebSocketApp(url,
+                                          on_open=self._on_open,
+                                          on_message=self._on_message,
+                                          on_error=self._on_error)
+
+    def send_message(self, type_message, message):
+        self._message_data = {'type_message': type_message, 'message': message}
+        message_looop = Thread(target=self._ws.run_forever)
+        message_looop.setDaemon(True)
+        message_looop.start()
+
+    def _on_open(self, ws):
+        self._ws.send(json.dumps(self._message_data))
+
+    def _on_message(self, ws, message):
+        message_data = json.loads(message)
+        GObject.idle_add(self.emit, 'sent', message_data)
+
+    def _on_error(self, ws, error):
+        pass
 
 
 def get_user_data():
@@ -127,6 +156,7 @@ def package_ds_object(dsobj, destination_path):
     for key in dsobj.metadata.keys():
         if key not in ('object_id', 'preview', 'progress'):
             metadata[key] = dsobj.metadata[key]
+    metadata['original_object_id'] = dsobj.object_id
 
     metadata_file.write(json.dumps(metadata))
     metadata_file.close()
@@ -145,7 +175,7 @@ def package_ds_object(dsobj, destination_path):
     return file_path
 
 
-def unpackage_ds_object(origin_path, dsobj=None):
+def unpackage_ds_object(origin_path):
     """
     Receive a path of a zipped file, unzip it, and save the data,
     preview and metadata on a journal object
@@ -156,12 +186,4 @@ def unpackage_ds_object(origin_path, dsobj=None):
         preview_data = zipped.read('preview')
         zipped.extract('data', tmp_path)
 
-    if dsobj is not None:
-        for key in metadata.keys():
-            dsobj.metadata[key] = metadata[key]
-
-        dsobj.metadata['preview'] = dbus.ByteArray(preview_data)
-
-        dsobj.file_path = os.path.join(tmp_path, 'data')
-    else:
-        return metadata, preview_data, os.path.join(tmp_path, 'data')
+    return metadata, preview_data, os.path.join(tmp_path, 'data')

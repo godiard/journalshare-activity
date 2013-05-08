@@ -170,13 +170,30 @@ class Download(object):
 
             if self._dest_path.endswith('.journal'):
 
-                utils.unpackage_ds_object(self._dest_path, self.dl_jobject)
+                metadata, preview_data, file_path = \
+                    utils.unpackage_ds_object(self._dest_path)
+                original_object_id = metadata['original_object_id']
+                for key in metadata.keys():
+                    self.dl_jobject.metadata[key] = metadata[key]
+
+                self.dl_jobject.metadata['preview'] = dbus.ByteArray(
+                    preview_data)
+
+                self.dl_jobject.file_path = file_path
 
                 datastore.write(self.dl_jobject,
                                 transfer_ownership=True,
                                 reply_handler=self.__internal_save_cb,
                                 error_handler=self.__internal_error_cb,
                                 timeout=360)
+
+                # notify to the server, the object was successfully downloaded
+                url = 'ws://%s:%d/websocket' % (self._activity.ip,
+                                                self._activity.port)
+                messanger = utils.Messanger(url)
+                data = utils.get_user_data()
+                data['object_id'] = original_object_id
+                messanger.send_message('DOWNLOADED', data)
 
             else:
                 self.dl_jobject.metadata['title'] = \

@@ -67,7 +67,7 @@ class JournalShare(activity.Activity):
 
         # master is the activity in the activity who started the communication
         self._master = False
-        self._ip = '0.0.0.0'
+        self.ip = '0.0.0.0'
 
         if not self.shared_activity:
             # Get a free socket
@@ -183,7 +183,7 @@ class JournalShare(activity.Activity):
                         logging.error('temp_path %s', tmp_path)
                         packaged_file_path = utils.package_ds_object(
                             jobject, tmp_path)
-                        url = 'ws://%s:%d/websocket/upload' % (self._ip,
+                        url = 'ws://%s:%d/websocket/upload' % (self.ip,
                                                                self.port)
                         uploader = utils.Uploader(packaged_file_path, url)
                         uploader.connect('uploaded', self.__uploaded_cb)
@@ -227,11 +227,11 @@ class JournalShare(activity.Activity):
         assert isinstance(addr[0], str)
         assert isinstance(addr[1], (int, long))
         assert addr[1] > 0 and addr[1] < 65536
-        self._ip = addr[0]
+        self.ip = addr[0]
         self.port = int(addr[1])
 
         self.view.load_uri('http://%s:%d/web/index.html' %
-                           (self._ip, self.port))
+                           (self.ip, self.port))
         return False
 
     def _start_sharing(self):
@@ -423,6 +423,24 @@ class JournalManager(GObject.GObject):
         logging.error('INFO %s', info)
         return json.dumps(info)
 
+    def add_downloader(self, object_id, name, icon):
+        """
+        Add to the metadata downloaded_by field, the information
+        about who downloaded one object
+        """
+        dsobj = datastore.get(object_id)
+        downloaded_by = []
+        if 'downloaded_by' in dsobj.metadata:
+            downloaded_by = json.loads(dsobj.metadata['downloaded_by'])
+        # add the user data
+        user_data = {}
+        user_data['from'] = name
+        user_data['icon'] = icon
+        downloaded_by.append(user_data)
+        dsobj.metadata['downloaded_by'] = json.dumps(downloaded_by)
+        datastore.write(dsobj)
+        self._update_temporary_files()
+
     def create_object(self, file_path, metadata, preview_content):
         new_dsobject = datastore.create()
         #Set the file_path in the datastore.
@@ -485,6 +503,6 @@ class JournalManager(GObject.GObject):
             results.append({'title': str(title), 'desc': str(desc),
                             'comment': comment, 'id': str(object_id),
                             'shared_by': shared_by,
-                            'downloaded-by': downloaded_by})
+                            'downloaded_by': downloaded_by})
         logging.error(results)
         return json.dumps(results)
