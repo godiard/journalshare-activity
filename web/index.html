@@ -8,7 +8,7 @@
 
         local = (window.location.hostname == '0.0.0.0');
 
-        function add_tr(item) {
+        function create_tr(item, tr) {
             id = item.id;
             title = item.title;
             desc = item.desc;
@@ -22,8 +22,11 @@
                 }
             }
 
-            $('#journaltable').append("<tr id=" + id + ">" +
-                "<td><img src='/datastore/preview_id_" + id + "?v=x'></td>"+
+            if (tr == null) {
+                var tr = document.createElement('tr');
+                tr.id = id;
+            }
+            tr.innerHTML = "<td><img src='/datastore/preview_id_" + id + "?v=x'></td>"+
                 "<td class='desc_td'>"+
                 "<table class='desc_table'>"+
                 "<tr><td class='title'>" + title + "</td></tr>"+
@@ -36,10 +39,12 @@
                 "<a class='download_link' href='/datastore/id_" + id +".journal'>"+
                 "Download</a></td></tr>" : "") +
                 "</table>"+
-                "</td>" +
-            "</tr>");
+                "</td>";
+            return tr;
 
         }
+
+        var shared_items = [];
 
         function init() {
             $.getJSON("/datastore/owner_info.json", function(owner_info) {
@@ -49,8 +54,9 @@
             });
 
             $.getJSON("/datastore/selected.json", function(selected) {
+                shared_items = selected;
                 for (var i = 0; i < selected.length; i++) {
-                    add_tr(selected[i]);
+                    $('#journaltable').append(create_tr(selected[i], null));
                 }
 
                 if (selected.length == 0) {
@@ -73,10 +79,21 @@
             new_list = eval(evt.data);
             for (var i = 0; i < new_list.length; i++) {
                 id = new_list[i].id;
+                // if is a new shared item
                 if ($('#' + id).length == 0) {
-                    add_tr(new_list[i]);
+                    $('#journaltable').append(create_tr(new_list[i], null));
+                } else {
+                    // verify if the information changed
+                    for (var j = 0; j < shared_items.length; j++) {
+                        if (shared_items[j].id == id) {
+                            if (shared_items[j] != new_list[i]) {
+                                create_tr(new_list[i],$('#' + id)[0]);
+                            }
+                        }
+                    }
                 }
             }
+            shared_items = new_list;
         };
 
     </script>
