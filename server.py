@@ -29,39 +29,6 @@ import tempfile
 import base64
 
 
-class UploaderHandler(web.RequestHandler):
-
-    def initialize(self, instance_path, static_path, journal_manager):
-        self.instance_path = instance_path
-        self.static_path = static_path
-        self.jm = journal_manager
-
-    def post(self):
-        journal_item = self.request.files['journal_item'][0]
-
-        # save to the journal
-        zipped_file_path = os.path.join(self.instance_path, 'received.journal')
-        f = open(zipped_file_path, 'wb')
-        try:
-            f.write(journal_item['body'])
-        finally:
-            f.close()
-
-        metadata, preview_data, file_path = \
-            utils.unpackage_ds_object(zipped_file_path, None)
-
-        logging.error('METADATA %s', metadata)
-
-        GLib.idle_add(self.jm.create_object, file_path, metadata,
-                      preview_data)
-
-        #redirect to index.html page
-        f = open(os.path.join(self.static_path, 'reload_index.html'))
-        self.write(f.read())
-        f.close()
-        self.flush()
-
-
 class DatastoreHandler(web.StaticFileHandler):
 
     def set_extra_headers(self, path):
@@ -147,11 +114,7 @@ def run_server(activity_path, activity_root, jm, port):
             (r"/websocket", JournalWebSocketHandler,
                 {"instance_path": instance_path, "journal_manager": jm}),
             (r"/websocket/upload", WebSocketUploadHandler,
-                {"instance_path": instance_path, "journal_manager": jm}),
-            (r"/upload", UploaderHandler, {"instance_path": instance_path,
-                                           "static_path": static_path,
-                                           "journal_manager": jm
-                                           })
+                {"instance_path": instance_path, "journal_manager": jm})
         ])
     http_server = httpserver.HTTPServer(application)
     http_server.listen(port)
