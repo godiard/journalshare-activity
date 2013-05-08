@@ -26,6 +26,8 @@ import logging
 import websocket
 import tempfile
 
+from sugar3 import profile
+
 CHUNK_SIZE = 2048
 
 
@@ -76,6 +78,21 @@ class Uploader(GObject.GObject):
         GObject.idle_add(self.emit, 'uploaded')
 
 
+def get_user_data():
+    """
+    Create this structure:
+    {"from": "Walter Bender", "icon": ["#FFC169", "#FF2B34"]}
+    used to identify the owner of a shared object
+    is compatible with how the comments are saved in
+    http://wiki.sugarlabs.org/go/Features/Comment_box_in_journal_detail_view
+    """
+    xo_color = profile.get_color()
+    data = {}
+    data['from'] = profile.get_nick_name()
+    data['icon'] = [xo_color.get_stroke_color(), xo_color.get_fill_color()]
+    return data
+
+
 def package_ds_object(dsobj, destination_path):
     """
     Creates a zipped file with the file associated to a journal object,
@@ -110,6 +127,7 @@ def package_ds_object(dsobj, destination_path):
     for key in dsobj.metadata.keys():
         if key not in ('object_id', 'preview', 'progress'):
             metadata[key] = dsobj.metadata[key]
+
     metadata_file.write(json.dumps(metadata))
     metadata_file.close()
 

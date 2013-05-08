@@ -8,12 +8,14 @@
 
         local = (window.location.hostname == '0.0.0.0');
 
-        function add_tr(id, title, desc) {
+        function add_tr(id, title, desc, shared_by) {
             $('#journaltable').append("<tr id=" + id + ">" +
                 "<td><img src='/datastore/preview_id_" + id + "?v=x'></td>"+
                 "<td class='desc_td'>"+
                 "<table class='desc_table'>"+
                 "<tr><td class='title'>" + title + "</td></tr>"+
+                (shared_by.from != '' ? "<tr><td>Shared by " + shared_by.from +
+                 "</td></tr>" : "") +
                 "<tr><td>" + desc + "</td></tr>"+
                 (!local ? "<tr><td>"+
                 "<a class='download_link' href='/datastore/id_" + id +".journal'>"+
@@ -34,7 +36,8 @@
             $.getJSON("/datastore/selected.json", function(selected) {
                 for (var i = 0; i < selected.length; i++) {
                     id = selected[i].id;
-                    add_tr(id, selected[i].title, selected[i].desc);
+                    add_tr(id, selected[i].title, selected[i].desc,
+                           selected[i].shared_by);
                 }
 
                 if (selected.length == 0) {
@@ -59,7 +62,8 @@
             for (var i = 0; i < new_list.length; i++) {
                 id = new_list[i].id;
                 if ($('#' + id).length == 0) {
-                    add_tr(id, new_list[i].title, new_list[i].desc);
+                    add_tr(id, new_list[i].title, new_list[i].desc,
+                           new_list[i].shared_by);
                 }
             }
         };

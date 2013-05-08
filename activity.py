@@ -169,8 +169,13 @@ class JournalShare(activity.Activity):
                 logging.debug('ObjectChooser: %r',
                               chooser.get_selected_object())
                 jobject = chooser.get_selected_object()
+                # add the information about the sharer
+                jobject.metadata['shared_by'] = json.dumps(
+                    utils.get_user_data())
+
                 if jobject and jobject.file_path:
                     if self._master:
+                        datastore.write(jobject)
                         self._jm.append_to_shared_items(jobject.object_id)
                     else:
                         tmp_path = os.path.join(self._activity_root,
@@ -454,6 +459,8 @@ class JournalManager(GObject.GObject):
             title = ''
             desc = ''
             comment = []
+            shared_by = {}
+            downloaded_by = []
             object_id = dsobj.object_id
             if hasattr(dsobj, 'metadata'):
                 if 'title' in dsobj.metadata:
@@ -465,12 +472,19 @@ class JournalManager(GObject.GObject):
                         comment = json.loads(dsobj.metadata['comments'])
                     except:
                         comment = []
+                if 'shared_by' in dsobj.metadata:
+                    shared_by = json.loads(dsobj.metadata['shared_by'])
+                if 'downloaded_by' in dsobj.metadata:
+                    downloaded_by = json.loads(
+                        dsobj.metadata['downloaded_by'])
             else:
                 logging.debug('dsobj has no metadata')
 
             utils.package_ds_object(dsobj, self._instance_path)
 
             results.append({'title': str(title), 'desc': str(desc),
-                            'comment': comment, 'id': str(object_id)})
+                            'comment': comment, 'id': str(object_id),
+                            'shared_by': shared_by,
+                            'downloaded-by': downloaded_by})
         logging.error(results)
         return json.dumps(results)
