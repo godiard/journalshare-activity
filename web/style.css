@@ -12,7 +12,7 @@ body {
   text-align: center;
   font-size: 26px;
   font-weight: bold;
-  width: 100%;
+  width: 90%;
   padding: 20px;
 }
 
@@ -30,9 +30,10 @@ body {
 }
 
 .desc_table {
-  background-color: #CCD4FB;
+  border: gray 2px solid;
   font-size: 14px;
-  width: 100%;
+  width: 98%;
+  -webkit-border-radius: 10px;
 }
 
 .download_link {
@@ -64,5 +65,4 @@ body {
 
 img {
   padding: 5px;
-  border:1px solid gray;
 }

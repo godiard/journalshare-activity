@@ -40,9 +40,10 @@
                 var tr = document.createElement('tr');
                 tr.id = id;
             }
-            tr.innerHTML = "<td><img src='/datastore/preview_id_" + id + "?v=x'></td>"+
+            tr.innerHTML = "<td><div class='desc_table'><table><tr>" +
+                "<td><img src='/datastore/preview_id_" + id + "?v=x' width=150></td>"+
                 "<td class='desc_td'>"+
-                "<table class='desc_table'>"+
+                "<table>"+
                 "<tr><td class='title'>" + title + "</td></tr>"+
                 (shared_by.from != '' ? "<tr><td>Shared by " +
                 prepare_xo_image_link(shared_by.icon[0], shared_by.icon[1], 30) + shared_by.from +
@@ -54,7 +55,7 @@
                 "<a class='download_link' href='/datastore/id_" + id +".journal'>"+
                 "Download</a></td></tr>" : "") +
                 "</table>"+
-                "</td>";
+                "</td></tr></table></div></td>";
             return tr;
 
         }
