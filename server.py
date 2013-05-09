@@ -28,6 +28,10 @@ import utils
 import tempfile
 import base64
 import json
+import StringIO
+
+import cairo
+from sugar3.graphics.icon import _IconBuffer
 
 
 class DatastoreHandler(web.StaticFileHandler):
@@ -36,6 +40,50 @@ class DatastoreHandler(web.StaticFileHandler):
         """For subclass to add extra headers to the response"""
         self.set_header("Content-Type", 'application/journal')
         self._path = path
+
+
+class IconHandler(web.RequestHandler):
+
+    def initialize(self, path):
+        self._path = path
+
+    def get(self, *args, **kwargs):
+        logging.error('requested %s', (args))
+        image_name = args[0]
+        [icon_name, stroke_color, fill_color] = image_name.split('_')
+        icon_name = str(icon_name) + '.svg'
+        logging.error('icon_name %s stroke %s fill %s',
+            icon_name, stroke_color, fill_color)
+
+        icon_buffer = _IconBuffer()
+        icon_buffer.file_name = os.path.join(self._path, 'images', icon_name)
+        icon_buffer.stroke_color = '#%s' % str(stroke_color)
+        icon_buffer.fill_color = '#%s' % str(fill_color)
+        icon_buffer.width = 50
+        icon_buffer.height = 50
+        icon_surface = icon_buffer.get_surface()
+        surface = cairo.ImageSurface(cairo.FORMAT_RGB24, icon_buffer.width,
+            icon_buffer.height)
+        context = cairo.Context(surface)
+        context.set_source_rgba(1, 1, 1, 1)
+        context.rectangle(0, 0, icon_buffer.width, icon_buffer.height)
+        context.fill()
+        context.set_source_surface(icon_surface, 0, 0)
+        context.paint()
+        out = StringIO.StringIO()
+        surface.write_to_png(out)
+        self.write(out.getvalue())
+        self.finish()
+
+    def write(self, chunk):
+        """
+        Overwrited to avoid write the content as utf8
+        """
+        if self._finished:
+            raise RuntimeError("Cannot write() after finish().  May be caused "
+                               "by using async operations without the "
+                               "@asynchronous decorator.")
+        self._write_buffer.append(chunk)
 
 
 class JournalWebSocketHandler(websocket.WebSocketHandler):
@@ -122,6 +170,7 @@ def run_server(activity_path, activity_root, jm, port):
     application = web.Application(
         [
             (r"/web/(.*)", web.StaticFileHandler, {"path": static_path}),
+            (r"/icon/(.*)", IconHandler, {"path": static_path}),
             (r"/datastore/(.*)", DatastoreHandler, {"path": instance_path}),
             (r"/websocket", JournalWebSocketHandler,
                 {"instance_path": instance_path, "journal_manager": jm}),

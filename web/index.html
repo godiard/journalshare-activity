@@ -8,6 +8,15 @@
 
         local = (window.location.hostname == '0.0.0.0');
 
+        function prepare_xo_image_link(stroke_color, fill_color, size) {
+            stroke_color = stroke_color.replace('#', '');
+            fill_color = fill_color.replace('#', '');
+            img = "<img style='border: 0px;vertical-align: middle' width="+ size + " " +
+                "src='/icon/computer-xo_" + stroke_color + "_" +
+                fill_color + "?v=x'/>";
+            return img;
+        }
+
         function create_tr(item, tr) {
             id = item.id;
             title = item.title;
@@ -18,7 +27,12 @@
             if (downloaded_by.length > 0) {
                 for (var i = 0; i < downloaded_by.length; i++) {
                     user_data = downloaded_by[i];
-                    downloaded_list += downloaded_list.concat(user_data.from);
+                    downloaded_list = downloaded_list +
+                        prepare_xo_image_link(user_data.icon[0], user_data.icon[1], 30) +
+                        " " + user_data.from;
+                    if (i < downloaded_by.length - 1) {
+                        downloaded_list = downloaded_list + ",";
+                    }
                 }
             }
 
@@ -30,7 +44,8 @@
                 "<td class='desc_td'>"+
                 "<table class='desc_table'>"+
                 "<tr><td class='title'>" + title + "</td></tr>"+
-                (shared_by.from != '' ? "<tr><td>Shared by " + shared_by.from +
+                (shared_by.from != '' ? "<tr><td>Shared by " +
+                prepare_xo_image_link(shared_by.icon[0], shared_by.icon[1], 30) + shared_by.from +
                  "</td></tr>" : "") +
                 (desc != '' ? "<tr><td>" + desc + "</td></tr>" : "")+
                 (downloaded_list != '' ? "<tr><td>Downloaded by " + downloaded_list +
@@ -48,9 +63,10 @@
 
         function init() {
             $.getJSON("/datastore/owner_info.json", function(owner_info) {
+                $('#header').append(prepare_xo_image_link(owner_info.stroke_color, owner_info.fill_color, 60));
                 $('#header').append("Journal of " + owner_info.nick_name);
-                $('#header').css('color', owner_info.stroke_color);
-                $('#header').css('background-color', owner_info.fill_color);
+                //$('#header').css('color', owner_info.stroke_color);
+                //$('#header').css('background-color', owner_info.fill_color);
             });
 
             $.getJSON("/datastore/selected.json", function(selected) {
