@@ -24,6 +24,11 @@ body {
   width: 100%;
 }
 
+.description {
+  font-family: sans-serif,cantarell,helvetica;
+  font-size: 16px;
+}
+
 .desc_td {
   vertical-align: top;
   width: 100%;

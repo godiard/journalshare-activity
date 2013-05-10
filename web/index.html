@@ -45,11 +45,11 @@
                 "<td class='desc_td'>"+
                 "<table>"+
                 "<tr><td class='title'>" + title + "</td></tr>"+
-                (shared_by.from != '' ? "<tr><td>Shared by " +
+                (desc != '' ? "<tr><td class='description'>" + desc + "</td></tr>" : "")+
+                (shared_by.from != '' ? "<tr><td class='description'>Shared by " +
                 prepare_xo_image_link(shared_by.icon[0], shared_by.icon[1], 30) + shared_by.from +
                  "</td></tr>" : "") +
-                (desc != '' ? "<tr><td>" + desc + "</td></tr>" : "")+
-                (downloaded_list != '' ? "<tr><td>Downloaded by " + downloaded_list +
+                (downloaded_list != '' ? "<tr><td class='description'>Downloaded by " + downloaded_list +
                  "</td></tr>" : "") +
                 (!local ? "<tr><td>"+
                 "<a class='download_link' href='/datastore/id_" + id +".journal'>"+
